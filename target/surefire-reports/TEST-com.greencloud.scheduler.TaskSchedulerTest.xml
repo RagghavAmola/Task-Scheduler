@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.greencloud.scheduler.TaskSchedulerTest" time="0.005" tests="1" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.greencloud.scheduler.TaskSchedulerTest" time="0.178" tests="5" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="17"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -15,7 +15,7 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="US"/>
     <property name="sun.boot.library.path" value="C:\Users\ASUS\AppData\Roaming\Antigravity IDE\User\globalStorage\pleiades.java-extension-pack-jdk\java\17\bin"/>
-    <property name="sun.java.command" value="C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608\surefirebooter-20260917001421827_3.jar C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608 2026-09-17T00-14-21_543-jvmRun1 surefire-20260917001421827_1tmp surefire_0-20260917001421827_2tmp"/>
+    <property name="sun.java.command" value="C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293\surefirebooter-20260917010257418_3.jar C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293 2026-09-17T01-02-57_122-jvmRun1 surefire-20260917010257418_1tmp surefire_0-20260917010257418_2tmp"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="D:\SE\Task-Scheduler\target\test-classes;D:\SE\Task-Scheduler\target\classes;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter\5.10.2\junit-jupiter-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.10.2\junit-jupiter-api-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\opentest4j\opentest4j\1.3.0\opentest4j-1.3.0.jar;C:\Users\ASUS\.m2\repository\org\junit\platform\junit-platform-commons\1.10.2\junit-platform-commons-1.10.2.jar;C:\Users\ASUS\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.10.2\junit-jupiter-params-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.10.2\junit-jupiter-engine-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\platform\junit-platform-engine\1.10.2\junit-platform-engine-1.10.2.jar;C:\Users\ASUS\.m2\repository\org\mockito\mockito-core\5.11.0\mockito-core-5.11.0.jar;C:\Users\ASUS\.m2\repository\net\bytebuddy\byte-buddy\1.14.12\byte-buddy-1.14.12.jar;C:\Users\ASUS\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.12\byte-buddy-agent-1.14.12.jar;C:\Users\ASUS\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-databind\2.17.0\jackson-databind-2.17.0.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-annotations\2.17.0\jackson-annotations-2.17.0.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.17.0\jackson-core-2.17.0.jar;"/>
     <property name="sun.cpu.endian" value="little"/>
@@ -30,7 +30,7 @@
     <property name="line.separator" value="&#10;"/>
     <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
     <property name="java.specification.name" value="Java Platform API Specification"/>
-    <property name="surefire.real.class.path" value="C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608\surefirebooter-20260917001421827_3.jar"/>
+    <property name="surefire.real.class.path" value="C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293\surefirebooter-20260917010257418_3.jar"/>
     <property name="user.script" value=""/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
     <property name="java.runtime.version" value="17.0.20.1+1"/>
@@ -58,5 +58,97 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="61.0"/>
   </properties>
-  <testcase name="testSchedulerInitialization" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.003"/>
+  <testcase name="testSchedulerInitializationAndSubmission" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.01">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [task-1] added (Priority: HIGH, Threshold: 150.0 gCO2/kWh). Total pending: 1
+]]></system-err>
+  </testcase>
+  <testcase name="testTickWithEnvironmentalDataProvider" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.037">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [task-env] added (Priority: HIGH, Threshold: 180.0 gCO2/kWh). Total pending: 1
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [task-env] (Priority: HIGH, Threshold: 180.0 gCO2/kWh) against current carbon intensity: 120.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [task-env] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [START] BackupTask [task-env]: backing up from 'default_src' to 'default_dest' (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [END] BackupTask [task-env]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [task-env] finished execution with status: COMPLETED
+]]></system-err>
+  </testcase>
+  <testcase name="testCarbonIntensityDeferral" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.029">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [bg-task] added (Priority: BACKGROUND, Threshold: 100.0 gCO2/kWh). Total pending: 1
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [bg-task] (Priority: BACKGROUND, Threshold: 100.0 gCO2/kWh) against current carbon intensity: 250.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [bg-task] IS NOT ELIGIBLE to run (Threshold: 100.0 gCO2/kWh < Current: 250.0 gCO2/kWh). Retaining in queue for better conditions.
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [bg-task] (Priority: BACKGROUND, Threshold: 100.0 gCO2/kWh) against current carbon intensity: 90.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [bg-task] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [START] BatchProcessingTask [bg-task]: processing 1000 records (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [END] BatchProcessingTask [bg-task]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [bg-task] finished execution with status: COMPLETED
+]]></system-err>
+  </testcase>
+  <testcase name="testPriorityExecutionOrder" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.061">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [bg-task] added (Priority: BACKGROUND, Threshold: 200.0 gCO2/kWh). Total pending: 1
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [high-task] added (Priority: HIGH, Threshold: 200.0 gCO2/kWh). Total pending: 2
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [crit-task] added (Priority: CRITICAL, Threshold: 200.0 gCO2/kWh). Total pending: 3
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [crit-task] (Priority: CRITICAL, Threshold: 200.0 gCO2/kWh) against current carbon intensity: 150.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [crit-task] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [START] BatchProcessingTask [crit-task]: processing 50 records (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [END] BatchProcessingTask [crit-task]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [crit-task] finished execution with status: COMPLETED
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [high-task] (Priority: HIGH, Threshold: 200.0 gCO2/kWh) against current carbon intensity: 150.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [high-task] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [START] BackupTask [high-task]: backing up from 'default_src' to 'default_dest' (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [END] BackupTask [high-task]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [high-task] finished execution with status: COMPLETED
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [bg-task] (Priority: BACKGROUND, Threshold: 200.0 gCO2/kWh) against current carbon intensity: 150.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [bg-task] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [START] BatchProcessingTask [bg-task]: processing 100 records (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
+INFO: [END] BatchProcessingTask [bg-task]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [bg-task] finished execution with status: COMPLETED
+]]></system-err>
+  </testcase>
+  <testcase name="testCriticalTaskBypassesCarbonThreshold" classname="com.greencloud.scheduler.TaskSchedulerTest" time="0.03">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler submitTask
+INFO: [SUBMIT] Task [crit-1] added (Priority: CRITICAL, Threshold: 50.0 gCO2/kWh). Total pending: 1
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [TICK] Evaluating top task [crit-1] (Priority: CRITICAL, Threshold: 50.0 gCO2/kWh) against current carbon intensity: 500.0 gCO2/kWh
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [DECISION] Task [crit-1] IS ELIGIBLE to run. Starting execution...
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [START] BackupTask [crit-1]: backing up from 'default_src' to 'default_dest' (duration: 10 ms)
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
+INFO: [END] BackupTask [crit-1]: completed successfully
+Sep 17, 2026 1:03:01 AM com.greencloud.scheduler.TaskScheduler tick
+INFO: [OUTCOME] Task [crit-1] finished execution with status: COMPLETED
+]]></system-err>
+  </testcase>
 </testsuite>

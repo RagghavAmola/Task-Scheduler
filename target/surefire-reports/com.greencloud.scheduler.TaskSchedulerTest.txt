@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.greencloud.scheduler.TaskSchedulerTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.greencloud.scheduler.TaskSchedulerTest
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.178 s -- in com.greencloud.scheduler.TaskSchedulerTest

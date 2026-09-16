@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.greencloud.model.ComputeTaskTest" time="0.196" tests="5" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.greencloud.model.ComputeTaskTest" time="0.19" tests="5" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="17"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -15,7 +15,7 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="US"/>
     <property name="sun.boot.library.path" value="C:\Users\ASUS\AppData\Roaming\Antigravity IDE\User\globalStorage\pleiades.java-extension-pack-jdk\java\17\bin"/>
-    <property name="sun.java.command" value="C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608\surefirebooter-20260917001421827_3.jar C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608 2026-09-17T00-14-21_543-jvmRun1 surefire-20260917001421827_1tmp surefire_0-20260917001421827_2tmp"/>
+    <property name="sun.java.command" value="C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293\surefirebooter-20260917010257418_3.jar C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293 2026-09-17T01-02-57_122-jvmRun1 surefire-20260917010257418_1tmp surefire_0-20260917010257418_2tmp"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="D:\SE\Task-Scheduler\target\test-classes;D:\SE\Task-Scheduler\target\classes;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter\5.10.2\junit-jupiter-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.10.2\junit-jupiter-api-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\opentest4j\opentest4j\1.3.0\opentest4j-1.3.0.jar;C:\Users\ASUS\.m2\repository\org\junit\platform\junit-platform-commons\1.10.2\junit-platform-commons-1.10.2.jar;C:\Users\ASUS\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.10.2\junit-jupiter-params-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.10.2\junit-jupiter-engine-5.10.2.jar;C:\Users\ASUS\.m2\repository\org\junit\platform\junit-platform-engine\1.10.2\junit-platform-engine-1.10.2.jar;C:\Users\ASUS\.m2\repository\org\mockito\mockito-core\5.11.0\mockito-core-5.11.0.jar;C:\Users\ASUS\.m2\repository\net\bytebuddy\byte-buddy\1.14.12\byte-buddy-1.14.12.jar;C:\Users\ASUS\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.12\byte-buddy-agent-1.14.12.jar;C:\Users\ASUS\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-databind\2.17.0\jackson-databind-2.17.0.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-annotations\2.17.0\jackson-annotations-2.17.0.jar;C:\Users\ASUS\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.17.0\jackson-core-2.17.0.jar;"/>
     <property name="sun.cpu.endian" value="little"/>
@@ -30,7 +30,7 @@
     <property name="line.separator" value="&#10;"/>
     <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
     <property name="java.specification.name" value="Java Platform API Specification"/>
-    <property name="surefire.real.class.path" value="C:\Users\ASUS\AppData\Local\Temp\surefire7385737861932634608\surefirebooter-20260917001421827_3.jar"/>
+    <property name="surefire.real.class.path" value="C:\Users\ASUS\AppData\Local\Temp\surefire10270311299009359293\surefirebooter-20260917010257418_3.jar"/>
     <property name="user.script" value=""/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
     <property name="java.runtime.version" value="17.0.20.1+1"/>
@@ -58,20 +58,20 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="61.0"/>
   </properties>
-  <testcase name="testIsEligibleToRun" classname="com.greencloud.model.ComputeTaskTest" time="0.011"/>
-  <testcase name="testBackupTaskExecute" classname="com.greencloud.model.ComputeTaskTest" time="0.068">
-    <system-err><![CDATA[Sep 17, 2026 12:14:25 AM com.greencloud.model.BackupTask execute
+  <testcase name="testIsEligibleToRun" classname="com.greencloud.model.ComputeTaskTest" time="0.012"/>
+  <testcase name="testBackupTaskExecute" classname="com.greencloud.model.ComputeTaskTest" time="0.062">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
 INFO: [START] BackupTask [bk-100]: backing up from '/tmp/src' to '/tmp/dst' (duration: 50 ms)
-Sep 17, 2026 12:14:25 AM com.greencloud.model.BackupTask execute
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BackupTask execute
 INFO: [END] BackupTask [bk-100]: completed successfully
 ]]></system-err>
   </testcase>
-  <testcase name="testEqualsAndHashCode" classname="com.greencloud.model.ComputeTaskTest" time="0.032"/>
+  <testcase name="testEqualsAndHashCode" classname="com.greencloud.model.ComputeTaskTest" time="0.031"/>
   <testcase name="testPriorityQueueOrdering" classname="com.greencloud.model.ComputeTaskTest" time="0.004"/>
-  <testcase name="testBatchProcessingTaskExecute" classname="com.greencloud.model.ComputeTaskTest" time="0.071">
-    <system-err><![CDATA[Sep 17, 2026 12:14:25 AM com.greencloud.model.BatchProcessingTask execute
+  <testcase name="testBatchProcessingTaskExecute" classname="com.greencloud.model.ComputeTaskTest" time="0.07">
+    <system-err><![CDATA[Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
 INFO: [START] BatchProcessingTask [batch-200]: processing 500 records (duration: 50 ms)
-Sep 17, 2026 12:14:26 AM com.greencloud.model.BatchProcessingTask execute
+Sep 17, 2026 1:03:01 AM com.greencloud.model.BatchProcessingTask execute
 INFO: [END] BatchProcessingTask [batch-200]: completed successfully
 ]]></system-err>
   </testcase>
