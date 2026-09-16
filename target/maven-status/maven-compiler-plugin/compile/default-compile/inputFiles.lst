@@ -1,6 +1,10 @@
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\env\CarbonIntensitySnapshot.java
+D:\SE\Task-Scheduler\src\main\java\com\greencloud\env\EnvironmentalDataPoller.java
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\env\EnvironmentalDataProvider.java
+D:\SE\Task-Scheduler\src\main\java\com\greencloud\env\LiveEnvironmentalDataProvider.java
+D:\SE\Task-Scheduler\src\main\java\com\greencloud\env\SimulatedEnvironmentalDataProvider.java
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\exceptions\ApiException.java
+D:\SE\Task-Scheduler\src\main\java\com\greencloud\exceptions\EnvironmentalDataException.java
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\exceptions\SchedulingException.java
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\Main.java
 D:\SE\Task-Scheduler\src\main\java\com\greencloud\model\BackupTask.java

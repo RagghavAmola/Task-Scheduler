@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.greencloud.model.ComputeTaskTest
 -------------------------------------------------------------------------------
-Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.294 s -- in com.greencloud.model.ComputeTaskTest
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.196 s -- in com.greencloud.model.ComputeTaskTest
