@@ -1,5 +1,4 @@
 package com.greencloud.model;
-
 import java.util.Objects;
 
 /**
@@ -7,14 +6,20 @@ import java.util.Objects;
  * Implements Comparable to allow natural ordering in PriorityQueue based on
  * priority (CRITICAL > HIGH > BACKGROUND) and submission timestamp (FIFO for same priority).
  */
+
 public abstract class ComputeTask implements Comparable<ComputeTask> {
 
     private final String taskId;
     private TaskPriority priority;
     private long durationMillis;
+    private long remainingDurationMillis;
     private double carbonThresholdGramsPerKwh;
     private long submittedAt;
     private TaskStatus status;
+    private long startTime;
+    private long preemptedTime;
+    private long resumedTime;
+    private long completedTime;
 
     public ComputeTask(String taskId, TaskPriority priority, long durationMillis, double carbonThresholdGramsPerKwh) {
         this(taskId, priority, durationMillis, carbonThresholdGramsPerKwh, System.currentTimeMillis(), TaskStatus.PENDING);
@@ -28,6 +33,7 @@ public abstract class ComputeTask implements Comparable<ComputeTask> {
         this.taskId = taskId;
         this.priority = priority;
         this.durationMillis = durationMillis;
+        this.remainingDurationMillis = durationMillis;
         this.carbonThresholdGramsPerKwh = carbonThresholdGramsPerKwh;
         this.submittedAt = submittedAt;
         this.status = status;
@@ -69,6 +75,65 @@ public abstract class ComputeTask implements Comparable<ComputeTask> {
 
     public void setDurationMillis(long durationMillis) {
         this.durationMillis = durationMillis;
+        if (this.status == TaskStatus.PENDING || this.remainingDurationMillis == 0) {
+            this.remainingDurationMillis = durationMillis;
+        }
+    }
+
+    public long getRemainingDurationMillis() {
+        return remainingDurationMillis;
+    }
+
+    public void setRemainingDurationMillis(long remainingDurationMillis) {
+        this.remainingDurationMillis = remainingDurationMillis;
+    }
+
+    public long getRemainingWork() {
+        return remainingDurationMillis;
+    }
+
+    public void setRemainingWork(long remainingWork) {
+        this.remainingDurationMillis = remainingWork;
+    }
+
+    public double getCompletionPercentage() {
+        if (durationMillis <= 0) {
+            return 100.0;
+        }
+        double completed = (double) (durationMillis - remainingDurationMillis) / durationMillis * 100.0;
+        return Math.max(0.0, Math.min(100.0, completed));
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
+    }
+
+    public long getPreemptedTime() {
+        return preemptedTime;
+    }
+
+    public void setPreemptedTime(long preemptedTime) {
+        this.preemptedTime = preemptedTime;
+    }
+
+    public long getResumedTime() {
+        return resumedTime;
+    }
+
+    public void setResumedTime(long resumedTime) {
+        this.resumedTime = resumedTime;
+    }
+
+    public long getCompletedTime() {
+        return completedTime;
+    }
+
+    public void setCompletedTime(long completedTime) {
+        this.completedTime = completedTime;
     }
 
     public double getCarbonThresholdGramsPerKwh() {

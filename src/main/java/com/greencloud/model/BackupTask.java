@@ -49,19 +49,24 @@ public class BackupTask extends ComputeTask {
 
     @Override
     public void execute() {
-        LOGGER.info(() -> String.format("[START] BackupTask [%s]: backing up from '%s' to '%s' (duration: %d ms)",
-                getTaskId(), sourcePath != null ? sourcePath : "default_src", destinationPath != null ? destinationPath : "default_dest", getDurationMillis()));
+        LOGGER.info(() -> String.format("[START] BackupTask [%s]: backing up from '%s' to '%s' (remaining duration: %d ms, total: %d ms)",
+                getTaskId(), sourcePath != null ? sourcePath : "default_src", destinationPath != null ? destinationPath : "default_dest", getRemainingDurationMillis(), getDurationMillis()));
         setStatus(TaskStatus.RUNNING);
+        long workDuration = getRemainingDurationMillis();
+        long startTime = System.currentTimeMillis();
         try {
-            long workDuration = getDurationMillis();
             if (workDuration > 0) {
                 Thread.sleep(workDuration);
             }
+            setRemainingDurationMillis(0);
             setStatus(TaskStatus.COMPLETED);
             LOGGER.info(() -> String.format("[END] BackupTask [%s]: completed successfully", getTaskId()));
         } catch (InterruptedException e) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            long remaining = Math.max(0, workDuration - elapsed);
+            setRemainingDurationMillis(remaining);
             setStatus(TaskStatus.PREEMPTED);
-            LOGGER.warning(() -> String.format("[PREEMPTED] BackupTask [%s] was interrupted", getTaskId()));
+            LOGGER.warning(() -> String.format("[PREEMPTED] BackupTask [%s] was interrupted. Remaining duration: %d ms", getTaskId(), remaining));
             Thread.currentThread().interrupt();
         }
     }

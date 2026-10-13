@@ -38,19 +38,32 @@ public class BatchProcessingTask extends ComputeTask {
 
     @Override
     public void execute() {
-        LOGGER.info(() -> String.format("[START] BatchProcessingTask [%s]: processing %d records (duration: %d ms)",
-                getTaskId(), recordCount, getDurationMillis()));
+        LOGGER.info(() -> String.format("[START] BatchProcessingTask [%s]: processing %d records (remaining duration: %d ms, total: %d ms)",
+                getTaskId(), recordCount, getRemainingDurationMillis(), getDurationMillis()));
         setStatus(TaskStatus.RUNNING);
+
+        long totalRemainingBeforeExecution = getRemainingDurationMillis();
+        long workDuration = Math.min(totalRemainingBeforeExecution, 100);
+        long startTime = System.currentTimeMillis();
+
         try {
-            long workDuration = Math.min(getDurationMillis(), 100);
             if (workDuration > 0) {
                 Thread.sleep(workDuration);
             }
+            // Successfully finished this 100ms chunk (or remaining portion if < 100ms)
+            setRemainingDurationMillis(Math.max(0, totalRemainingBeforeExecution - workDuration));
             setStatus(TaskStatus.COMPLETED);
             LOGGER.info(() -> String.format("[END] BatchProcessingTask [%s]: completed successfully", getTaskId()));
         } catch (InterruptedException e) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            // Interrupted mid-chunk: calculate how much of this current chunk was left uncompleted
+            long uncompletedChunkWork = Math.max(0, workDuration - elapsed);
+            // Add the uncompleted chunk work back to the remaining duration beyond this chunk
+            long totalRemainingAfterInterruption = (totalRemainingBeforeExecution - workDuration) + uncompletedChunkWork;
+
+            setRemainingDurationMillis(totalRemainingAfterInterruption);
             setStatus(TaskStatus.PREEMPTED);
-            LOGGER.warning(() -> String.format("[PREEMPTED] BatchProcessingTask [%s] was interrupted", getTaskId()));
+            LOGGER.warning(() -> String.format("[PREEMPTED] BatchProcessingTask [%s] was interrupted. Remaining duration: %d ms", getTaskId(), totalRemainingAfterInterruption));
             Thread.currentThread().interrupt();
         }
     }

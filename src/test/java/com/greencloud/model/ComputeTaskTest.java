@@ -93,4 +93,27 @@ class ComputeTaskTest {
         assertTrue(task1.toString().contains("taskId='task-1'"));
         assertTrue(task1.toString().contains("priority=HIGH"));
     }
+
+    @Test
+    @DisplayName("Test remaining work, duration tracking, and completion percentage")
+    void testRemainingWorkAndCompletionPercentage() {
+        BackupTask task = new BackupTask("task-progress", TaskPriority.HIGH, 1000, 150.0);
+        assertEquals(1000, task.getDurationMillis());
+        assertEquals(1000, task.getRemainingDurationMillis());
+        assertEquals(1000, task.getRemainingWork());
+        assertEquals(0.0, task.getCompletionPercentage(), 0.01);
+
+        task.setRemainingDurationMillis(750);
+        assertEquals(750, task.getRemainingDurationMillis());
+        assertEquals(750, task.getRemainingWork());
+        assertEquals(25.0, task.getCompletionPercentage(), 0.01);
+
+        task.setRemainingWork(500);
+        assertEquals(500, task.getRemainingDurationMillis());
+        assertEquals(500, task.getRemainingWork());
+        assertEquals(50.0, task.getCompletionPercentage(), 0.01);
+
+        task.setRemainingDurationMillis(0);
+        assertEquals(100.0, task.getCompletionPercentage(), 0.01);
+    }
 }

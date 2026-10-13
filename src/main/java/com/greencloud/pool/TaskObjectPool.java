@@ -138,6 +138,7 @@ public class TaskObjectPool<T extends ComputeTask> {
         if (task == null) return;
         task.setStatus(TaskStatus.PENDING);
         task.setSubmittedAt(System.currentTimeMillis());
+        task.setRemainingDurationMillis(task.getDurationMillis());
         if (task instanceof BatchProcessingTask batchTask) {
             batchTask.setRecordCount(0);
         }
