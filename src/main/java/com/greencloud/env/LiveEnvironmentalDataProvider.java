@@ -2,6 +2,7 @@ package com.greencloud.env;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.greencloud.exceptions.ApiException;
 import com.greencloud.exceptions.EnvironmentalDataException;
 
 import java.io.IOException;
@@ -54,8 +55,8 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
-                throw new EnvironmentalDataException(
-                        String.format("Carbon intensity API returned HTTP status %d: %s", response.statusCode(), response.body())
+                throw new ApiException(
+                    String.format("Carbon intensity API returned HTTP status %d: %s", response.statusCode(), response.body())
                 );
             }
 
@@ -64,7 +65,7 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
             Thread.currentThread().interrupt();
             throw new EnvironmentalDataException("Interrupted while fetching live carbon intensity data", e);
         } catch (IOException e) {
-            throw new EnvironmentalDataException("Network I/O failure while fetching carbon intensity data: " + e.getMessage(), e);
+            throw new ApiException("Network I/O failure while fetching carbon intensity data: " + e.getMessage(), e);
         } catch (Exception e) {
             if (e instanceof EnvironmentalDataException ede) {
                 throw ede;
@@ -79,7 +80,7 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
             JsonNode dataNode = rootNode.path("data");
 
             if (!dataNode.isArray() || dataNode.isEmpty()) {
-                throw new EnvironmentalDataException("Invalid API response format: missing 'data' array");
+                throw new ApiException("Invalid API response format: missing 'data' array");
             }
 
             JsonNode currentItem = dataNode.get(0);
@@ -91,7 +92,7 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
             } else if (intensityNode.hasNonNull("forecast")) {
                 intensityValue = intensityNode.path("forecast").asDouble();
             } else {
-                throw new EnvironmentalDataException("No valid 'actual' or 'forecast' carbon intensity found in response");
+                throw new ApiException("No valid 'actual' or 'forecast' carbon intensity found in response");
             }
 
             String fromTimestamp = currentItem.path("from").asText();

@@ -3,6 +3,7 @@ package com.greencloud.model;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+
 import java.util.PriorityQueue;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -66,6 +67,45 @@ class ComputeTaskTest {
         assertEquals(TaskStatus.COMPLETED, task.getStatus());
     }
 
+    @Test
+    void testBatchProcessingTaskPreemptionAndRemainingWork() throws InterruptedException {
+        // Create a batch processing task with a 400ms duration and 100 records
+        BatchProcessingTask task = new BatchProcessingTask("TASK-001",TaskPriority.HIGH,400L,50.0,100);
+
+        assertEquals(400L, task.getRemainingDurationMillis());
+        assertEquals(TaskStatus.PENDING, task.getStatus());
+
+        // Run the task asynchronously in a separate thread so we can interrupt it
+        Thread workerThread = new Thread(task::execute);
+        workerThread.start();
+
+        while (task.getStatus() != TaskStatus.RUNNING) {
+            Thread.sleep(10L);
+        }
+
+        // Now let it run a bit inside the chunk before interrupting
+        Thread.sleep(50L);
+        workerThread.interrupt();
+        workerThread.join();
+        // Verify that the task status is PREEMPTED
+        assertEquals(TaskStatus.PREEMPTED, task.getStatus());
+
+        // Verify that remaining work is less than 400ms but greater than 0
+        long remaining = task.getRemainingDurationMillis();
+        assertTrue(remaining > 0 && remaining < 400L, 
+                () -> "Remaining work should be partially completed, but was: " + remaining);
+
+        // Resume the task to verify it completes using only its remaining time across chunks
+        while (task.getRemainingDurationMillis() > 0 && task.getStatus() != TaskStatus.COMPLETED) {
+            Thread resumeThread = new Thread(task::execute);
+            resumeThread.start();
+            resumeThread.join();
+        }
+
+        assertEquals(TaskStatus.COMPLETED, task.getStatus());
+        assertEquals(0L, task.getRemainingDurationMillis());
+    }
+    
     @Test
     @DisplayName("Test BatchProcessingTask execute() flow and status transitions")
     void testBatchProcessingTaskExecute() {
