@@ -7,5 +7,6 @@ public enum TaskStatus {
     PENDING,
     RUNNING,
     PREEMPTED,
-    COMPLETED
+    COMPLETED,
+    FAILED
 }

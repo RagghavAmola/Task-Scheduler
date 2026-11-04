@@ -14,6 +14,7 @@ import java.util.logging.Logger;
  * and caches the latest CarbonIntensitySnapshot.
  * Allows schedulers to inspect the current carbon intensity instantly without blocking
  * on network calls.
+ * Falls back to the last known good snapshot or a secondary fallback provider if polling fails.
  */
 public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoCloseable {
 
@@ -24,16 +25,26 @@ public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoC
     private final long pollIntervalSeconds;
     private final boolean ownExecutor;
     private final AtomicReference<CarbonIntensitySnapshot> latestSnapshot = new AtomicReference<>();
+    private final EnvironmentalDataProvider fallbackProvider;
 
     public EnvironmentalDataPoller(EnvironmentalDataProvider provider, long pollIntervalSeconds) {
-        this(provider, pollIntervalSeconds, Executors.newSingleThreadScheduledExecutor(), true);
+        this(provider, pollIntervalSeconds, Executors.newSingleThreadScheduledExecutor(), true, null);
+    }
+
+    public EnvironmentalDataPoller(EnvironmentalDataProvider provider, long pollIntervalSeconds, EnvironmentalDataProvider fallbackProvider) {
+        this(provider, pollIntervalSeconds, Executors.newSingleThreadScheduledExecutor(), true, fallbackProvider);
     }
 
     public EnvironmentalDataPoller(EnvironmentalDataProvider provider, long pollIntervalSeconds, ScheduledExecutorService executor, boolean ownExecutor) {
+        this(provider, pollIntervalSeconds, executor, ownExecutor, null);
+    }
+
+    public EnvironmentalDataPoller(EnvironmentalDataProvider provider, long pollIntervalSeconds, ScheduledExecutorService executor, boolean ownExecutor, EnvironmentalDataProvider fallbackProvider) {
         this.provider = provider;
         this.pollIntervalSeconds = pollIntervalSeconds;
         this.executor = executor;
         this.ownExecutor = ownExecutor;
+        this.fallbackProvider = fallbackProvider;
     }
 
     /**
@@ -54,6 +65,7 @@ public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoC
 
     /**
      * Polls the underlying provider and updates the cached snapshot.
+     * If polling fails, retains the last known snapshot or attempts fallback.
      */
     public void poll() {
         try {
@@ -63,7 +75,17 @@ public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoC
                     snapshot.carbonIntensityGCO2kWh(), snapshot.region()));
         } catch (EnvironmentalDataException e) {
             LOGGER.log(Level.WARNING, "Failed to poll environmental data provider: " + e.getMessage(), e);
-            // Retain last known snapshot if polling fails
+            if (latestSnapshot.get() == null && fallbackProvider != null) {
+                try {
+                    CarbonIntensitySnapshot fallback = fallbackProvider.getCurrentIntensity();
+                    latestSnapshot.set(fallback);
+                    LOGGER.info(() -> "[POLLER FALLBACK] Cache initialized using fallback provider");
+                } catch (EnvironmentalDataException ex) {
+                    LOGGER.log(Level.WARNING, "Fallback provider also failed during poll: " + ex.getMessage(), ex);
+                }
+            }
+        } catch (Throwable t) {
+            LOGGER.log(Level.SEVERE, "Unexpected error in environmental data polling loop: " + t.getMessage(), t);
         }
     }
 
@@ -72,7 +94,7 @@ public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoC
      * If no snapshot has been cached yet, attempts an on-demand poll.
      *
      * @return CarbonIntensitySnapshot latest cached snapshot
-     * @throws EnvironmentalDataException if no snapshot is cached and on-demand poll fails
+     * @throws EnvironmentalDataException if no snapshot is cached and fallback fails
      */
     @Override
     public CarbonIntensitySnapshot getCurrentIntensity() throws EnvironmentalDataException {
@@ -83,10 +105,13 @@ public class EnvironmentalDataPoller implements EnvironmentalDataProvider, AutoC
         // Fallback if no snapshot cached yet
         poll();
         cached = latestSnapshot.get();
-        if (cached == null) {
-            throw new EnvironmentalDataException("No carbon intensity snapshot available yet");
+        if (cached != null) {
+            return cached;
         }
-        return cached;
+        if (fallbackProvider != null) {
+            return fallbackProvider.getCurrentIntensity();
+        }
+        throw new EnvironmentalDataException("No carbon intensity snapshot available yet");
     }
 
     public CarbonIntensitySnapshot getLatestSnapshot() {

@@ -1,8 +1,12 @@
 package com.greencloud.scheduler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.greencloud.env.CarbonIntensitySnapshot;
 import com.greencloud.env.EnvironmentalDataProvider;
+import com.greencloud.env.LiveEnvironmentalDataProvider;
+import com.greencloud.env.SimulatedEnvironmentalDataProvider;
 import com.greencloud.exceptions.EnvironmentalDataException;
+import com.greencloud.exceptions.SchedulingException;
 import com.greencloud.model.BackupTask;
 import com.greencloud.model.BatchProcessingTask;
 import com.greencloud.model.ComputeTask;
@@ -12,12 +16,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Instant;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 class TaskSchedulerTest {
 
@@ -232,16 +242,169 @@ class TaskSchedulerTest {
         scheduler.executeCritical(crit1);
         assertEquals(TaskStatus.COMPLETED, crit1.getStatus());
 
-        // If we want to test nested preemption explicitly via executeCritical:
-        // Setting up a scenario where crit1 runs and gets preempted by crit2
+        // Setting up a scenario where task1 is running again and gets preempted
         task1.setStatus(TaskStatus.RUNNING);
         scheduler.executeCritical(crit1); // task1 pushed
-        
-        // Now invoke crit2 while crit1 is running (or simulate nesting)
-        scheduler.executeCritical(crit2); // crit1 pushed onto stack above task1
+
+        scheduler.executeCritical(crit2);
         assertEquals(TaskStatus.COMPLETED, crit2.getStatus());
 
         // Preempted stack should be empty after all tasks complete their resume cycles
         assertEquals(0, scheduler.getPreemptedTaskCount());
+    }
+
+    @Test
+    @DisplayName("Test that task execute() throwing RuntimeException is marked FAILED and scheduler continues processing queued tasks")
+    void testTaskExecutionFailureDoesNotStopScheduler() {
+        ComputeTask failingTask = new ComputeTask("failing-task", TaskPriority.HIGH, 50, 150.0) {
+            @Override
+            public void execute() {
+                throw new RuntimeException("Simulated catastrophic task runtime failure");
+            }
+        };
+
+        ComputeTask healthyTask1 = new BackupTask("healthy-1", TaskPriority.HIGH, 20, 150.0);
+        ComputeTask healthyTask2 = new BatchProcessingTask("healthy-2", TaskPriority.BACKGROUND, 20, 150.0, 50);
+
+        scheduler.submitTask(failingTask);
+        scheduler.submitTask(healthyTask1);
+        scheduler.submitTask(healthyTask2);
+
+        assertEquals(3, scheduler.getPendingTaskCount());
+
+        // Tick 1: failing task executes and throws exception
+        ComputeTask executed1 = scheduler.tick(100.0);
+        assertNotNull(executed1);
+        assertEquals("failing-task", executed1.getTaskId());
+        assertEquals(TaskStatus.FAILED, executed1.getStatus(), "Failing task must be marked as FAILED");
+        assertEquals(2, scheduler.getPendingTaskCount(), "Remaining tasks must NOT be lost");
+        assertTrue(scheduler.getExecutionEvents().contains("FAILED:failing-task"));
+
+        // Tick 2: healthyTask1 executes normally
+        ComputeTask executed2 = scheduler.tick(100.0);
+        assertNotNull(executed2);
+        assertEquals("healthy-1", executed2.getTaskId());
+        assertEquals(TaskStatus.COMPLETED, executed2.getStatus());
+        assertEquals(1, scheduler.getPendingTaskCount());
+
+        // Tick 3: healthyTask2 executes normally
+        ComputeTask executed3 = scheduler.tick(100.0);
+        assertNotNull(executed3);
+        assertEquals("healthy-2", executed3.getTaskId());
+        assertEquals(TaskStatus.COMPLETED, executed3.getStatus());
+        assertEquals(0, scheduler.getPendingTaskCount());
+    }
+
+    @Test
+    @DisplayName("Test invalid task submissions throw SchedulingException and are rejected from queue")
+    void testInvalidTaskSubmissionThrowsSchedulingException() {
+        // Null task
+        assertThrows(SchedulingException.class, () -> scheduler.submitTask(null));
+
+        // Task with null priority
+        assertThrows(SchedulingException.class, () ->
+                scheduler.submitTask(new BackupTask("t-null-prio", null, 100, 150.0)));
+
+        // Task with negative duration
+        assertThrows(SchedulingException.class, () ->
+                scheduler.submitTask(new BackupTask("t-neg-duration", TaskPriority.HIGH, -10, 150.0)));
+
+        // Task with negative carbon threshold
+        assertThrows(SchedulingException.class, () ->
+                scheduler.submitTask(new BackupTask("t-neg-carbon", TaskPriority.HIGH, 100, -25.0)));
+
+        // Task with blank taskId
+        assertThrows(SchedulingException.class, () ->
+                scheduler.submitTask(new BackupTask("   ", TaskPriority.HIGH, 100, 150.0)));
+
+        // Queue must remain empty
+        assertEquals(0, scheduler.getPendingTaskCount());
+    }
+
+    @Test
+    @DisplayName("Test scheduler survives API returning malformed JSON and continues operating via fallback")
+    void testSchedulerSurvivesMalformedJsonWithProviderFallback() throws Exception {
+        HttpClient mockClient = mock(HttpClient.class);
+        @SuppressWarnings("unchecked")
+        HttpResponse<String> mockResponse = mock(HttpResponse.class);
+        when(mockResponse.statusCode()).thenReturn(200);
+        when(mockResponse.body()).thenReturn("{ malformed: json [ invalid");
+
+        doReturn(mockResponse).when(mockClient).send(any(HttpRequest.class), any());
+
+        SimulatedEnvironmentalDataProvider fallback = new SimulatedEnvironmentalDataProvider("SIM-BACKUP", 80.0, 80.0, 60.0, false);
+        LiveEnvironmentalDataProvider provider = new LiveEnvironmentalDataProvider(
+                "https://api.carbonintensity.org.uk/intensity",
+                "UK-TEST",
+                mockClient,
+                new ObjectMapper(),
+                fallback
+        );
+
+        TaskScheduler resilientScheduler = new TaskScheduler(provider);
+        ComputeTask task = new BackupTask("task-resilient-json", TaskPriority.HIGH, 10, 100.0);
+        resilientScheduler.submitTask(task);
+
+        // Tick delegating to provider: malformed JSON occurs, provider falls back to simulated provider (80.0 gCO2/kWh <= threshold 100.0)
+        ComputeTask executed = resilientScheduler.tick();
+        assertNotNull(executed, "Scheduler should survive malformed JSON and execute eligible task via fallback");
+        assertEquals("task-resilient-json", executed.getTaskId());
+        assertEquals(TaskStatus.COMPLETED, executed.getStatus());
+        assertEquals(0, resilientScheduler.getPendingTaskCount());
+    }
+
+    @Test
+    @DisplayName("Test scheduler survives API timeout and continues operating using last known snapshot")
+    void testSchedulerSurvivesApiTimeoutWithLastKnownSnapshot() throws Exception {
+        String validJson = """
+                {
+                "data": [
+                        {
+                        "from": "2026-09-16T18:00Z",
+                        "to": "2026-09-16T18:30Z",
+                        "intensity": {
+                        "forecast": 95,
+                        "actual": 90,
+                        "index": "low"
+                        }
+                        }
+                ]
+                }
+                """;
+
+        HttpClient mockClient = mock(HttpClient.class);
+        @SuppressWarnings("unchecked")
+        HttpResponse<String> mockResponse = mock(HttpResponse.class);
+        when(mockResponse.statusCode()).thenReturn(200);
+        when(mockResponse.body()).thenReturn(validJson);
+
+        // Tick 1 succeeds, Tick 2 times out
+        doReturn(mockResponse)
+                .doThrow(new HttpTimeoutException("Network timeout to carbon API"))
+                .when(mockClient).send(any(HttpRequest.class), any());
+
+        LiveEnvironmentalDataProvider provider = new LiveEnvironmentalDataProvider(
+                "https://api.carbonintensity.org.uk/intensity",
+                "UK-TEST",
+                mockClient,
+                new ObjectMapper()
+        );
+
+        TaskScheduler resilientScheduler = new TaskScheduler(provider);
+
+        // Tick 1: establishes lastKnownSnapshot (90 gCO2/kWh)
+        ComputeTask t1 = new BackupTask("task-tick-1", TaskPriority.HIGH, 10, 100.0);
+        resilientScheduler.submitTask(t1);
+        ComputeTask r1 = resilientScheduler.tick();
+        assertEquals(TaskStatus.COMPLETED, r1.getStatus());
+
+        // Tick 2: API times out, provider falls back to 90 gCO2/kWh
+        ComputeTask t2 = new BackupTask("task-tick-2", TaskPriority.HIGH, 10, 100.0);
+        resilientScheduler.submitTask(t2);
+        ComputeTask r2 = resilientScheduler.tick();
+        assertNotNull(r2, "Scheduler should survive API timeout and execute task using last known snapshot");
+        assertEquals("task-tick-2", r2.getTaskId());
+        assertEquals(TaskStatus.COMPLETED, r2.getStatus());
+        assertEquals(0, resilientScheduler.getPendingTaskCount());
     }
 }

@@ -2,6 +2,7 @@ package com.greencloud.scheduler;
 
 import com.greencloud.env.EnvironmentalDataProvider;
 import com.greencloud.exceptions.EnvironmentalDataException;
+import com.greencloud.exceptions.SchedulingException;
 import com.greencloud.model.ComputeTask;
 import com.greencloud.model.TaskPriority;
 import com.greencloud.model.TaskStatus;
@@ -15,12 +16,21 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * TaskScheduler manages submission and single-task execution of ComputeTasks,
  * prioritizing tasks based on priority level and submission timestamp while enforcing
  * carbon intensity thresholds. Supports preemption for CRITICAL priority tasks.
+ * <p>
+ * Hardened exception handling:
+ * <ul>
+ *   <li>Validates task submissions, throwing {@link SchedulingException} for invalid inputs.</li>
+ *   <li>Catches task execution failures (e.g., RuntimeException), records status as {@link TaskStatus#FAILED},
+ *       and continues scheduler operation without dropping remaining queued tasks.</li>
+ *   <li>Falls back to last known carbon intensity if provider fails during tick execution.</li>
+ * </ul>
  */
 public class TaskScheduler {
 
@@ -37,7 +47,7 @@ public class TaskScheduler {
     private final EnvironmentalDataProvider provider;
     private final TaskObjectPool<ComputeTask> objectPool;
     private final ReentrantLock schedulerLock = new ReentrantLock();
-    
+    private volatile Double lastKnownCarbonIntensity;
 
     public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool) {
         this.provider = provider;
@@ -58,16 +68,45 @@ public class TaskScheduler {
     }
 
     /**
+     * Validates task fields for submission integrity.
+     *
+     * @param task ComputeTask to validate
+     * @throws SchedulingException if any submission precondition is violated
+     */
+    private void validateTask(ComputeTask task) {
+        if (task == null) {
+            throw new SchedulingException("Task cannot be null");
+        }
+        if (task.getTaskId() == null || task.getTaskId().trim().isEmpty()) {
+            throw new SchedulingException("Task ID cannot be null or empty");
+        }
+        if (task.getPriority() == null) {
+            throw new SchedulingException("Task priority cannot be null for task: " + task.getTaskId());
+        }
+        if (task.getDurationMillis() < 0) {
+            throw new SchedulingException(String.format("Task duration cannot be negative: %d ms (task: %s)",
+                    task.getDurationMillis(), task.getTaskId()));
+        }
+        if (task.getRemainingDurationMillis() < 0) {
+            throw new SchedulingException(String.format("Task remaining duration cannot be negative: %d ms (task: %s)",
+                    task.getRemainingDurationMillis(), task.getTaskId()));
+        }
+        if (task.getCarbonThresholdGramsPerKwh() < 0) {
+            throw new SchedulingException(String.format("Task carbon threshold cannot be negative: %.1f gCO2/kWh (task: %s)",
+                    task.getCarbonThresholdGramsPerKwh(), task.getTaskId()));
+        }
+    }
+
+    /**
      * Submits a compute task to the pending priority queue.
      * If a CRITICAL task is submitted while another task is currently executing,
      * triggers preemption of the running task so that the critical task can execute immediately.
      *
      * @param task ComputeTask to schedule
+     * @throws SchedulingException if the task is null or has invalid attributes
      */
     public void submitTask(ComputeTask task) {
-        if (task == null) {
-            throw new IllegalArgumentException("Task cannot be null");
-        }
+        validateTask(task);
 
         schedulerLock.lock();
         try {
@@ -85,7 +124,7 @@ public class TaskScheduler {
                 }
             }
         } finally {
-        schedulerLock.unlock();
+            schedulerLock.unlock();
         }
     }
 
@@ -95,14 +134,16 @@ public class TaskScheduler {
      *    set status to PREEMPTED, and push it onto the stack.
      * 2. Immediately execute the critical task.
      * 3. After the critical task completes, pop the stack and resume the preempted task
-     *    from its saved context (status back to RUNNING, then COMPLETED).
+     *    from its saved context (status back to RUNNING, then COMPLETED or FAILED).
      *
      * @param criticalTask the CRITICAL priority ComputeTask to execute immediately
      * @return the executed critical task
+     * @throws SchedulingException if criticalTask is invalid or not of CRITICAL priority
      */
     public synchronized ComputeTask executeCritical(ComputeTask criticalTask) {
-        if (criticalTask == null) {
-            throw new IllegalArgumentException("Critical task cannot be null");
+        validateTask(criticalTask);
+        if (criticalTask.getPriority() != TaskPriority.CRITICAL) {
+            throw new SchedulingException("Task must have CRITICAL priority to execute via executeCritical: " + criticalTask.getTaskId());
         }
 
         pendingQueue.remove(criticalTask);
@@ -120,7 +161,7 @@ public class TaskScheduler {
                     currentExecutionThread.interrupt();
                 }
             }
-            if (!preemptedTaskStack.contains(runningTask)) {
+            if (!preemptedTaskStack.contains(runningTask) && runningTask.getStatus() == TaskStatus.PREEMPTED) {
                 preemptedTaskStack.push(runningTask);
                 runningTask.setPreemptedTime(System.currentTimeMillis());
                 executionEvents.add("PREEMPTED:" + runningTask.getTaskId());
@@ -138,19 +179,24 @@ public class TaskScheduler {
         try {
             criticalTask.execute();
             criticalTask.setStatus(TaskStatus.COMPLETED);
-        } catch (Exception e) {
-            LOGGER.severe(() -> String.format("[CRITICAL] Task [%s] failed: %s", criticalTask.getTaskId(), e.getMessage()));
+        } catch (Throwable t) {
+            criticalTask.setStatus(TaskStatus.FAILED);
+            LOGGER.log(Level.SEVERE, String.format("[CRITICAL] Task [%s] failed with exception: %s", criticalTask.getTaskId(), t.getMessage()), t);
         } finally {
             criticalTask.setCompletedTime(System.currentTimeMillis());
-            executionEvents.add("CRITICAL_EXECUTED:" + criticalTask.getTaskId());
-            LOGGER.info(() -> String.format("[CRITICAL] Critical task [%s] executed", criticalTask.getTaskId()));
+            if (criticalTask.getStatus() == TaskStatus.FAILED) {
+                executionEvents.add("CRITICAL_FAILED:" + criticalTask.getTaskId());
+            } else {
+                executionEvents.add("CRITICAL_EXECUTED:" + criticalTask.getTaskId());
+            }
+            LOGGER.info(() -> String.format("[CRITICAL] Critical task [%s] finished with status: %s", criticalTask.getTaskId(), criticalTask.getStatus()));
             if (criticalTask.getStatus() == TaskStatus.COMPLETED && objectPool != null) {
-            objectPool.release(criticalTask);
+                objectPool.release(criticalTask);
             }
         }
 
         // 3. After the critical task completes, pop the stack and resume the preempted task
-        // from its saved context (status back to RUNNING, then COMPLETED)
+        // from its saved context (status back to RUNNING, then COMPLETED or FAILED)
         if (!preemptedTaskStack.isEmpty()) {
             ComputeTask resumedTask = preemptedTaskStack.pop();
             resumedTask.setStatus(TaskStatus.RUNNING);
@@ -164,12 +210,17 @@ public class TaskScheduler {
             try {
                 resumedTask.execute();
                 resumedTask.setStatus(TaskStatus.COMPLETED);
-            } catch (Exception e) {
-                LOGGER.severe(() -> String.format("[RESUME] Task [%s] failed: %s", resumedTask.getTaskId(), e.getMessage()));
+            } catch (Throwable t) {
+                resumedTask.setStatus(TaskStatus.FAILED);
+                LOGGER.log(Level.SEVERE, String.format("[RESUME] Task [%s] failed with exception: %s", resumedTask.getTaskId(), t.getMessage()), t);
             } finally {
                 resumedTask.setCompletedTime(System.currentTimeMillis());
-                executionEvents.add("COMPLETED:" + resumedTask.getTaskId());
-                LOGGER.info(() -> String.format("[COMPLETED] Task [%s] resumed and completed", resumedTask.getTaskId()));
+                if (resumedTask.getStatus() == TaskStatus.FAILED) {
+                    executionEvents.add("FAILED:" + resumedTask.getTaskId());
+                } else {
+                    executionEvents.add("COMPLETED:" + resumedTask.getTaskId());
+                }
+                LOGGER.info(() -> String.format("[COMPLETED] Task [%s] resumed and completed with status: %s", resumedTask.getTaskId(), resumedTask.getStatus()));
                 currentlyRunningTask = null;
                 currentExecutionThread = null;
                 if (resumedTask.getStatus() == TaskStatus.COMPLETED && objectPool != null) {
@@ -185,10 +236,10 @@ public class TaskScheduler {
     }
 
     /**
-    * Executes a scheduling tick using the configured EnvironmentalDataProvider.
+     * Executes a scheduling tick using the configured EnvironmentalDataProvider.
      *
      * @return executed ComputeTask, or null if no eligible task was executed
-     * @throws EnvironmentalDataException if fetching carbon intensity fails
+     * @throws EnvironmentalDataException if fetching carbon intensity fails and no fallback is available
      */
     public ComputeTask tick() throws EnvironmentalDataException {
         if (this.provider == null) {
@@ -200,8 +251,8 @@ public class TaskScheduler {
     /**
      * Evaluates the top pending task against the current carbon intensity.
      * If eligible, removes the task from the queue and executes it.
-     * If a CRITICAL task is submitted while another task is executing,
-     * executeCritical() is triggered automatically rather than waiting in the normal queue.
+     * If a task's execute() throws an exception, marks the task as FAILED,
+     * logs the incident, and keeps the scheduler running for remaining tasks.
      *
      * @param currentCarbonIntensity current grid carbon intensity in gCO2/kWh
      * @return the executed ComputeTask, or null if no task was executed
@@ -241,10 +292,13 @@ public class TaskScheduler {
         }
 
         // --- PHASE 2: TASK EXECUTION OUTSIDE LOCK ---
+        boolean taskFailed = false;
         try {
             candidate.execute();
-        } catch (Exception e) {
-            LOGGER.severe(() -> String.format("[OUTCOME] Task [%s] failed with exception: %s", candidate.getTaskId(), e.getMessage()));
+        } catch (Throwable t) {
+            taskFailed = true;
+            candidate.setStatus(TaskStatus.FAILED);
+            LOGGER.log(Level.SEVERE, String.format("[OUTCOME] Task [%s] failed with exception: %s", candidate.getTaskId(), t.getMessage()), t);
         }
 
         // --- PHASE 3: COMPLETION / PREEMPTION HANDLING UNDER LOCK ---
@@ -260,13 +314,17 @@ public class TaskScheduler {
                 Thread.interrupted(); // clear interrupt status
                 executeCritical(critTask);
             } else {
-                if (candidate.getStatus() == TaskStatus.RUNNING) {
+                if (taskFailed || candidate.getStatus() == TaskStatus.FAILED) {
+                    candidate.setStatus(TaskStatus.FAILED);
+                    executionEvents.add("FAILED:" + candidate.getTaskId());
+                    LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished with status: FAILED (scheduler loop remains healthy)", candidate.getTaskId()));
+                } else if (candidate.getStatus() == TaskStatus.RUNNING) {
                     candidate.setStatus(TaskStatus.COMPLETED);
+                    LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished execution with status: COMPLETED", candidate.getTaskId()));
                 }
                 candidate.setCompletedTime(System.currentTimeMillis());
                 currentlyRunningTask = null;
                 currentExecutionThread = null;
-                LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished execution with status: %s", candidate.getTaskId(), candidate.getStatus()));
 
                 if (candidate.getStatus() == TaskStatus.COMPLETED && objectPool != null) {
                     objectPool.release(candidate);
@@ -290,17 +348,28 @@ public class TaskScheduler {
 
     /**
      * Overloaded tick method that obtains current carbon intensity from an EnvironmentalDataProvider.
+     * If fetching data fails and a previously observed intensity is cached, falls back to that value.
      *
      * @param provider EnvironmentalDataProvider
      * @return executed ComputeTask, or null
-     * @throws EnvironmentalDataException if fetching intensity fails
+     * @throws EnvironmentalDataException if fetching intensity fails and no fallback is available
      */
     public ComputeTask tick(EnvironmentalDataProvider provider) throws EnvironmentalDataException {
         if (provider == null) {
             throw new IllegalArgumentException("EnvironmentalDataProvider cannot be null");
         }
-        double currentIntensity = provider.getCurrentIntensity().carbonIntensityGCO2kWh();
-        return tick(currentIntensity);
+        try {
+            double currentIntensity = provider.getCurrentIntensity().carbonIntensityGCO2kWh();
+            this.lastKnownCarbonIntensity = currentIntensity;
+            return tick(currentIntensity);
+        } catch (EnvironmentalDataException e) {
+            LOGGER.warning(() -> "[SCHEDULER] EnvironmentalDataProvider failed: " + e.getMessage());
+            if (lastKnownCarbonIntensity != null) {
+                LOGGER.info(() -> String.format("[SCHEDULER FALLBACK] Using last known carbon intensity: %.1f gCO2/kWh", lastKnownCarbonIntensity));
+                return tick(lastKnownCarbonIntensity);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -361,5 +430,13 @@ public class TaskScheduler {
 
     public EnvironmentalDataProvider getProvider() {
         return this.provider;
+    }
+
+    public Double getLastKnownCarbonIntensity() {
+        return lastKnownCarbonIntensity;
+    }
+
+    public void setLastKnownCarbonIntensity(Double lastKnownCarbonIntensity) {
+        this.lastKnownCarbonIntensity = lastKnownCarbonIntensity;
     }
 }
