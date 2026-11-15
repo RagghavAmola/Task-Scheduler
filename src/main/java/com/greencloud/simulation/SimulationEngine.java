@@ -167,6 +167,7 @@ public class SimulationEngine {
 
         return stats;
     }
+
     /**
      * Schedules the arrival of tasks across the simulation timeline.
      * Ensures an active background task is running when the critical task arrives to demonstrate preemption.

@@ -108,7 +108,15 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
 
     private CarbonIntensitySnapshot parseResponse(String jsonBody) throws EnvironmentalDataException {
         try {
+            if (jsonBody == null || jsonBody.isBlank()) {
+                throw new ApiException("Invalid API response: empty or null response body");
+            }
+
             JsonNode rootNode = objectMapper.readTree(jsonBody);
+            if (rootNode == null || rootNode.isNull()) {
+                throw new ApiException("Invalid API response format: root JSON node is null");
+            }
+
             JsonNode dataNode = rootNode.path("data");
 
             if (!dataNode.isArray() || dataNode.isEmpty()) {
@@ -116,7 +124,14 @@ public class LiveEnvironmentalDataProvider implements EnvironmentalDataProvider 
             }
 
             JsonNode currentItem = dataNode.get(0);
+            if (currentItem == null || currentItem.isNull()) {
+                throw new ApiException("Invalid API response format: first data entry is null");
+            }
+
             JsonNode intensityNode = currentItem.path("intensity");
+            if (intensityNode == null || intensityNode.isMissingNode() || intensityNode.isNull()) {
+                throw new ApiException("Invalid API response format: intensity object is missing or null");
+            }
 
             double intensityValue;
             if (intensityNode.hasNonNull("actual")) {

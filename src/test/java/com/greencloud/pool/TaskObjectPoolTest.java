@@ -5,8 +5,11 @@ import com.greencloud.model.TaskPriority;
 import com.greencloud.model.TaskStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -140,5 +143,105 @@ class TaskObjectPoolTest {
 
         pool.clear();
         assertEquals(0, pool.getPoolSize());
+    }
+
+    @ParameterizedTest(name = "[{index}] Pool capacity constraint with maxSize={0}")
+    @ValueSource(ints = {1, 3, 5, 8, 12})
+    @DisplayName("Verify pool capacity constraint strictly caps at maxSize across various capacities")
+    void testPoolMaxSizeCapParameterized(int maxSize) {
+        TaskObjectPool<BatchProcessingTask> pool = new TaskObjectPool<>(maxSize);
+        List<BatchProcessingTask> acquired = new ArrayList<>();
+
+        // Acquire 3x the max capacity
+        for (int i = 0; i < maxSize * 3; i++) {
+            acquired.add(pool.acquire());
+        }
+
+        // Release all acquired tasks back to the pool
+        for (BatchProcessingTask task : acquired) {
+            pool.release(task);
+        }
+
+        assertEquals(maxSize, pool.getPoolSize(),
+                String.format("Pool size must be capped exactly at configured maxSize=%d", maxSize));
+    }
+
+    @Test
+    @DisplayName("Verify comprehensive task state reset across all mutable fields upon release and acquire")
+    void testComprehensiveTaskStateReset() {
+        TaskObjectPool<BatchProcessingTask> pool = new TaskObjectPool<>(
+                () -> new BatchProcessingTask("reset-check-task", TaskPriority.HIGH, 1000, 150.0, 500),
+                2
+        );
+
+        long beforeAcquireTime = System.currentTimeMillis();
+        BatchProcessingTask task = pool.acquire();
+
+        // Mutate every lifecycle field to simulate partial/failed execution
+        task.setStatus(TaskStatus.FAILED);
+        task.setRemainingDurationMillis(250);
+        task.setRecordCount(450);
+        task.setSubmittedAt(beforeAcquireTime - 100_000L);
+
+        // Verify mutated state before returning to pool
+        assertEquals(TaskStatus.FAILED, task.getStatus());
+        assertEquals(250, task.getRemainingDurationMillis());
+        assertEquals(450, task.getRecordCount());
+        assertEquals(75.0, task.getCompletionPercentage(), 0.01);
+
+        // Release back to pool
+        pool.release(task);
+
+        // Acquire the recycled task
+        BatchProcessingTask recycled = pool.acquire();
+        assertSame(task, recycled, "Pool should recycle the exact same instance");
+
+        // Verify complete reset
+        assertEquals(TaskStatus.PENDING, recycled.getStatus(), "Status must be reset to PENDING");
+        assertEquals(1000, recycled.getDurationMillis(), "Duration should remain unchanged");
+        assertEquals(1000, recycled.getRemainingDurationMillis(), "Remaining duration must be reset to initial duration");
+        assertEquals(1000, recycled.getRemainingWork(), "Remaining work must be reset to initial duration");
+        assertEquals(0.0, recycled.getCompletionPercentage(), 0.01, "Completion percentage must be 0%");
+        assertEquals(0, recycled.getRecordCount(), "Record count must be reset to 0");
+        assertTrue(recycled.getSubmittedAt() >= beforeAcquireTime, "Submitted timestamp must be refreshed to current time");
+    }
+
+    @Test
+    @DisplayName("Verify concurrent release loop never exceeds maxSize under high thread contention")
+    void testConcurrentReleaseNeverExceedsMaxSize() throws InterruptedException {
+        int targetMaxSize = 5;
+        TaskObjectPool<BatchProcessingTask> pool = new TaskObjectPool<>(targetMaxSize);
+
+        int threadCount = 20;
+        int tasksPerThread = 25;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+
+        // Pre-allocate tasks
+        List<BatchProcessingTask> allTasks = new ArrayList<>();
+        for (int i = 0; i < threadCount * tasksPerThread; i++) {
+            allTasks.add(new BatchProcessingTask("thread-task-" + i, TaskPriority.BACKGROUND, 500, 100.0, 10));
+        }
+
+        for (int t = 0; t < threadCount; t++) {
+            final int threadIndex = t;
+            executor.submit(() -> {
+                try {
+                    for (int i = 0; i < tasksPerThread; i++) {
+                        BatchProcessingTask task = allTasks.get(threadIndex * tasksPerThread + i);
+                        pool.release(task);
+                        // Intermediate check: pool size must never exceed targetMaxSize at any moment
+                        assertTrue(pool.getPoolSize() <= targetMaxSize, "Pool size exceeded maximum during concurrent releases!");
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        boolean finished = latch.await(10, TimeUnit.SECONDS);
+        executor.shutdown();
+        assertTrue(finished, "Concurrent release completed within timeout");
+        assertEquals(targetMaxSize, pool.getPoolSize(), "Pool size must be capped at exactly maxSize after all threads complete");
     }
 }

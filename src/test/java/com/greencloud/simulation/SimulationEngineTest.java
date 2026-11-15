@@ -24,8 +24,8 @@ class SimulationEngineTest {
         ConsoleView view = new ConsoleView(printStream, System.currentTimeMillis());
         view.setAnsiEnabled(false); // test with plain text for deterministic assertions
 
-        // Run a fast 10-second simulation with 400ms tick interval
-        SimulationEngine engine = new SimulationEngine(10, 400, view);
+        // Run a simulation configured with headroom; exits early once all tasks finish
+        SimulationEngine engine = new SimulationEngine(14, 350, view);
         SimulationStats stats = engine.run();
 
         assertNotNull(stats);

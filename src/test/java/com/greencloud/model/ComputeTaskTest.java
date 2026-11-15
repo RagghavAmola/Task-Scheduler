@@ -2,7 +2,9 @@ package com.greencloud.model;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.PriorityQueue;
 
@@ -10,8 +12,87 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ComputeTaskTest {
 
+    /**
+     * DECISION & SPECIFICATION: Threshold Boundary Conditions
+     * ---------------------------------------------------------
+     * Decision: When carbonThreshold == currentIntensity (exact boundary match),
+     * the task is ELIGIBLE to execute (isEligibleToRun evaluates to true).
+     *
+     * Rationale:
+     * 1. Carbon Budget Model: A task's carbonThresholdGramsPerKwh denotes the maximum
+     *    acceptable carbon emission upper ceiling. If the real-time grid intensity does
+     *    not exceed this threshold (currentIntensity <= carbonThreshold), execution
+     *    remains strictly within carbon compliance limits.
+     * 2. Starvation Avoidance: Disqualifying tasks at exact equality (< instead of <=)
+     *    would lead to artificial, unnecessary deferrals and queue stagnation when the
+     *    grid operates precisely at budgeted emissions targets.
+     * 3. Architectural Contract: Aligns with ComputeTask.isEligibleToRun:
+     *    `currentCarbonIntensity <= this.carbonThresholdGramsPerKwh`.
+     */
+    @ParameterizedTest(name = "[{index}] Priority={0}, Intensity={1}, Threshold={2} -> Eligible={3}")
+    @CsvSource({
+            // TaskPriority, Intensity, Threshold, ExpectedEligibility
+            "BACKGROUND,   99.0,      100.0,     true",     // Strictly below threshold -> eligible
+            "BACKGROUND,  100.0,      100.0,     true",     // Exactly equal to threshold -> ELIGIBLE (boundary condition)
+            "BACKGROUND,  100.001,    100.0,     false",    // Just above threshold -> ineligible (boundary condition)
+            "BACKGROUND,  101.0,      100.0,     false",    // Strictly above threshold -> ineligible
+            "BACKGROUND,    0.0,      100.0,     true",     // Zero grid emission -> eligible
+            "HIGH,        199.9,      200.0,     true",     // Below threshold -> eligible
+            "HIGH,        200.0,      200.0,     true",     // Exactly equal -> ELIGIBLE (boundary condition)
+            "HIGH,        200.001,    200.0,     false",    // Just above -> ineligible (boundary condition)
+            "HIGH,        300.0,      200.0,     false"     // Substantially above -> ineligible
+    })
+    @DisplayName("Boundary verification: carbonThreshold == currentIntensity is eligible (<= boundary)")
+    void testThresholdBoundaryConditionsParameterized(String priorityStr, double intensity, double threshold, boolean expectedEligible) {
+        TaskPriority priority = TaskPriority.valueOf(priorityStr);
+        ComputeTask task = new BatchProcessingTask("boundary-task", priority, 500, threshold, 100);
+
+        boolean actualEligible = task.isEligibleToRun(intensity);
+        assertEquals(expectedEligible, actualEligible,
+                String.format("Task with priority %s and threshold %.3f tested against intensity %.3f should be eligible=%b",
+                        priority, threshold, intensity, expectedEligible));
+    }
+
+    @ParameterizedTest(name = "[{index}] CRITICAL priority tested against carbon intensity={0} gCO2/kWh")
+    @ValueSource(doubles = {0.0, 50.0, 100.0, 100.001, 200.0, 500.0, 9999.0})
+    @DisplayName("Boundary verification: CRITICAL priority tasks are always eligible regardless of carbon intensity")
+    void testCriticalPriorityAlwaysEligibleParameterized(double carbonIntensity) {
+        // Critical task with low carbon threshold (e.g. 100.0 gCO2/kWh)
+        ComputeTask criticalTask = new BackupTask("crit-task", TaskPriority.CRITICAL, 500, 100.0);
+        assertTrue(criticalTask.isEligibleToRun(carbonIntensity),
+                String.format("CRITICAL priority must bypass carbon gating even when grid intensity is %.1f", carbonIntensity));
+    }
+
     @Test
-    @DisplayName("Test isEligibleToRun logic for CRITICAL vs carbon-sensitive tasks")
+    @DisplayName("Verify pairwise natural ordering between all priority levels")
+    void testPairwisePriorityComparisons() {
+        long now = System.currentTimeMillis();
+        ComputeTask crit = new BackupTask("c", TaskPriority.CRITICAL, 100, 100.0, now);
+        ComputeTask high = new BackupTask("h", TaskPriority.HIGH, 100, 100.0, now);
+        ComputeTask bg = new BackupTask("b", TaskPriority.BACKGROUND, 100, 100.0, now);
+
+        assertTrue(crit.compareTo(high) < 0, "CRITICAL should precede HIGH in priority ordering");
+        assertTrue(high.compareTo(bg) < 0, "HIGH should precede BACKGROUND in priority ordering");
+        assertTrue(crit.compareTo(bg) < 0, "CRITICAL should precede BACKGROUND in priority ordering");
+
+        assertTrue(high.compareTo(crit) > 0, "HIGH should follow CRITICAL in priority ordering");
+        assertTrue(bg.compareTo(high) > 0, "BACKGROUND should follow HIGH in priority ordering");
+    }
+
+    @Test
+    @DisplayName("Verify FIFO ordering for equal priority tasks strictly follows submittedAt")
+    void testEqualPriorityFifoComparison() {
+        ComputeTask earlier = new BackupTask("t-early", TaskPriority.HIGH, 100, 100.0, 1000L);
+        ComputeTask later = new BackupTask("t-late", TaskPriority.HIGH, 100, 100.0, 2000L);
+        ComputeTask identicalTimeOtherId = new BackupTask("t-a", TaskPriority.HIGH, 100, 100.0, 1000L);
+
+        assertTrue(earlier.compareTo(later) < 0, "Earlier task should precede later task");
+        assertTrue(later.compareTo(earlier) > 0, "Later task should follow earlier task");
+        // For identical priority and submittedAt, tie breaker falls back to taskId
+        assertTrue(earlier.compareTo(identicalTimeOtherId) > 0, "Tie breaker orders by taskId ('t-early' vs 't-a')");
+    }
+
+    @Test
     void testIsEligibleToRun() {
         ComputeTask criticalTask = new BackupTask("task-1", TaskPriority.CRITICAL, 1000, 150.0);
         ComputeTask highTask = new BatchProcessingTask("task-2", TaskPriority.HIGH, 2000, 200.0);
