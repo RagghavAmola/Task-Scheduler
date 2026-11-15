@@ -1,5 +1,6 @@
 package com.greencloud.scheduler;
 
+import com.greencloud.env.CarbonIntensitySnapshot;
 import com.greencloud.env.EnvironmentalDataProvider;
 import com.greencloud.exceptions.EnvironmentalDataException;
 import com.greencloud.exceptions.SchedulingException;
@@ -7,6 +8,7 @@ import com.greencloud.model.ComputeTask;
 import com.greencloud.model.TaskPriority;
 import com.greencloud.model.TaskStatus;
 import com.greencloud.pool.TaskObjectPool;
+import com.greencloud.view.ConsoleView;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -30,6 +32,7 @@ import java.util.logging.Logger;
  *   <li>Catches task execution failures (e.g., RuntimeException), records status as {@link TaskStatus#FAILED},
  *       and continues scheduler operation without dropping remaining queued tasks.</li>
  *   <li>Falls back to last known carbon intensity if provider fails during tick execution.</li>
+ *   <li>Integrates with {@link ConsoleView} for real-time presentation without violating separation of concerns.</li>
  * </ul>
  */
 public class TaskScheduler {
@@ -48,23 +51,29 @@ public class TaskScheduler {
     private final TaskObjectPool<ComputeTask> objectPool;
     private final ReentrantLock schedulerLock = new ReentrantLock();
     private volatile Double lastKnownCarbonIntensity;
+    private volatile ConsoleView consoleView;
 
-    public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool) {
+    public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool, ConsoleView consoleView) {
         this.provider = provider;
         this.objectPool = objectPool;
+        this.consoleView = consoleView;
         this.pendingQueue = new PriorityQueue<>();
         this.preemptedTaskStack = new ArrayDeque<>();
         this.executionEvents = new CopyOnWriteArrayList<>();
     }
 
+    public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool) {
+        this(provider, objectPool, null);
+    }
+
     // Overloaded single-argument constructor
     public TaskScheduler(EnvironmentalDataProvider provider) {
-        this(provider, null);
+        this(provider, null, null);
     }
 
     // Default no-argument constructor (matches original behavior)
     public TaskScheduler() {
-        this(null, null);
+        this(null, null, null);
     }
 
     /**
@@ -114,10 +123,18 @@ public class TaskScheduler {
             LOGGER.info(() -> String.format("[SUBMIT] Task [%s] added (Priority: %s, Threshold: %.1f gCO2/kWh). Total pending: %d",
                     task.getTaskId(), task.getPriority(), task.getCarbonThresholdGramsPerKwh(), pendingQueue.size()));
 
+            if (consoleView != null) {
+                consoleView.printTaskSubmitted(task, pendingQueue.size());
+            }
+
             if (task.getPriority() == TaskPriority.CRITICAL && currentlyRunningTask != null && currentlyRunningTask.getStatus() == TaskStatus.RUNNING) {
                 LOGGER.info(() -> String.format("[PREEMPTION TRIGGER] Critical task [%s] submitted while task [%s] is RUNNING. Interrupting executing thread.",
                         task.getTaskId(), currentlyRunningTask.getTaskId()));
                 criticalTaskToPreempt = task;
+
+                if (consoleView != null) {
+                    consoleView.printPreemptionTriggered(task, currentlyRunningTask);
+                }
 
                 if (currentExecutionThread != null) {
                     currentExecutionThread.interrupt();
@@ -167,6 +184,9 @@ public class TaskScheduler {
                 executionEvents.add("PREEMPTED:" + runningTask.getTaskId());
                 LOGGER.info(() -> String.format("[PREEMPTION] Task [%s] preempted at %.1f%% completion (remaining work: %d ms)",
                         runningTask.getTaskId(), runningTask.getCompletionPercentage(), runningTask.getRemainingDurationMillis()));
+                if (consoleView != null) {
+                    consoleView.printTaskPreempted(runningTask, criticalTask);
+                }
             }
         }
 
@@ -176,6 +196,11 @@ public class TaskScheduler {
         taskExecutionStartTime = System.currentTimeMillis();
         criticalTask.setStartTime(taskExecutionStartTime);
         criticalTask.setStatus(TaskStatus.RUNNING);
+
+        if (consoleView != null) {
+            consoleView.printCriticalBypass(criticalTask);
+        }
+
         try {
             criticalTask.execute();
             criticalTask.setStatus(TaskStatus.COMPLETED);
@@ -186,8 +211,14 @@ public class TaskScheduler {
             criticalTask.setCompletedTime(System.currentTimeMillis());
             if (criticalTask.getStatus() == TaskStatus.FAILED) {
                 executionEvents.add("CRITICAL_FAILED:" + criticalTask.getTaskId());
+                if (consoleView != null) {
+                    consoleView.printTaskFailed(criticalTask, "Critical task failed execution");
+                }
             } else {
                 executionEvents.add("CRITICAL_EXECUTED:" + criticalTask.getTaskId());
+                if (consoleView != null) {
+                    consoleView.printTaskCompleted(criticalTask);
+                }
             }
             LOGGER.info(() -> String.format("[CRITICAL] Critical task [%s] finished with status: %s", criticalTask.getTaskId(), criticalTask.getStatus()));
             if (criticalTask.getStatus() == TaskStatus.COMPLETED && objectPool != null) {
@@ -207,6 +238,11 @@ public class TaskScheduler {
             executionEvents.add("RESUMED:" + resumedTask.getTaskId());
             LOGGER.info(() -> String.format("[RESUME] Task [%s] resumed from saved context (remaining work: %d ms)",
                     resumedTask.getTaskId(), resumedTask.getRemainingDurationMillis()));
+
+            if (consoleView != null) {
+                consoleView.printTaskResumed(resumedTask);
+            }
+
             try {
                 resumedTask.execute();
                 resumedTask.setStatus(TaskStatus.COMPLETED);
@@ -217,8 +253,14 @@ public class TaskScheduler {
                 resumedTask.setCompletedTime(System.currentTimeMillis());
                 if (resumedTask.getStatus() == TaskStatus.FAILED) {
                     executionEvents.add("FAILED:" + resumedTask.getTaskId());
+                    if (consoleView != null) {
+                        consoleView.printTaskFailed(resumedTask, "Resumed task execution failed");
+                    }
                 } else {
                     executionEvents.add("COMPLETED:" + resumedTask.getTaskId());
+                    if (consoleView != null) {
+                        consoleView.printTaskCompleted(resumedTask);
+                    }
                 }
                 LOGGER.info(() -> String.format("[COMPLETED] Task [%s] resumed and completed with status: %s", resumedTask.getTaskId(), resumedTask.getStatus()));
                 currentlyRunningTask = null;
@@ -275,11 +317,18 @@ public class TaskScheduler {
             if (!candidate.isEligibleToRun(currentCarbonIntensity)) {
                 LOGGER.info(() -> String.format("[DECISION] Task [%s] IS NOT ELIGIBLE to run (Threshold: %.1f gCO2/kWh < Current: %.1f gCO2/kWh). Retaining in queue for better conditions.",
                         candidate.getTaskId(), candidate.getCarbonThresholdGramsPerKwh(), currentCarbonIntensity));
+                if (consoleView != null) {
+                    consoleView.printTaskDeferred(candidate, currentCarbonIntensity);
+                }
                 return null;
             }
 
             pendingQueue.poll();
             LOGGER.info(() -> String.format("[DECISION] Task [%s] IS ELIGIBLE to run. Starting execution...", candidate.getTaskId()));
+
+            if (consoleView != null) {
+                consoleView.printTaskEligible(candidate, currentCarbonIntensity);
+            }
 
             currentlyRunningTask = candidate;
             currentExecutionThread = Thread.currentThread();
@@ -318,9 +367,16 @@ public class TaskScheduler {
                     candidate.setStatus(TaskStatus.FAILED);
                     executionEvents.add("FAILED:" + candidate.getTaskId());
                     LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished with status: FAILED (scheduler loop remains healthy)", candidate.getTaskId()));
+                    if (consoleView != null) {
+                        consoleView.printTaskFailed(candidate, "Task threw an exception during execution");
+                    }
                 } else if (candidate.getStatus() == TaskStatus.RUNNING) {
                     candidate.setStatus(TaskStatus.COMPLETED);
+                    executionEvents.add("COMPLETED:" + candidate.getTaskId());
                     LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished execution with status: COMPLETED", candidate.getTaskId()));
+                    if (consoleView != null) {
+                        consoleView.printTaskCompleted(candidate);
+                    }
                 }
                 candidate.setCompletedTime(System.currentTimeMillis());
                 currentlyRunningTask = null;
@@ -359,8 +415,12 @@ public class TaskScheduler {
             throw new IllegalArgumentException("EnvironmentalDataProvider cannot be null");
         }
         try {
-            double currentIntensity = provider.getCurrentIntensity().carbonIntensityGCO2kWh();
+            CarbonIntensitySnapshot snapshot = provider.getCurrentIntensity();
+            double currentIntensity = snapshot.carbonIntensityGCO2kWh();
             this.lastKnownCarbonIntensity = currentIntensity;
+            if (consoleView != null) {
+                consoleView.printCarbonIntensityUpdate(snapshot);
+            }
             return tick(currentIntensity);
         } catch (EnvironmentalDataException e) {
             LOGGER.warning(() -> "[SCHEDULER] EnvironmentalDataProvider failed: " + e.getMessage());
@@ -372,13 +432,18 @@ public class TaskScheduler {
         }
     }
 
-    /**
+/**
      * Returns a snapshot of the preempted tasks stack.
      *
      * @return Deque of preempted tasks
      */
-    public synchronized Deque<ComputeTask> getPreemptedTaskStack() {
-        return new ArrayDeque<>(preemptedTaskStack);
+    public Deque<ComputeTask> getPreemptedTaskStack() {
+        schedulerLock.lock();
+        try {
+            return new ArrayDeque<>(preemptedTaskStack);
+        } finally {
+            schedulerLock.unlock();
+        }
     }
 
     /**
@@ -386,7 +451,7 @@ public class TaskScheduler {
      *
      * @return number of preempted tasks
      */
-    public synchronized int getPreemptedTaskCount() {
+    public int getPreemptedTaskCount() {
         return preemptedTaskStack.size();
     }
 
@@ -395,8 +460,8 @@ public class TaskScheduler {
      *
      * @return currently running ComputeTask
      */
-    public synchronized ComputeTask getCurrentlyRunningTask() {
-        return currentlyRunningTask;
+    public ComputeTask getCurrentlyRunningTask() {
+        return currentlyRunningTask; // volatile field ensures safe cross-thread visibility
     }
 
     /**
@@ -405,7 +470,7 @@ public class TaskScheduler {
      * @return list of event descriptions
      */
     public List<String> getExecutionEvents() {
-        return new ArrayList<>(executionEvents);
+        return new ArrayList<>(executionEvents); // executionEvents is a CopyOnWriteArrayList, so this is inherently thread-safe
     }
 
     /**
@@ -413,10 +478,15 @@ public class TaskScheduler {
      *
      * @return List of pending ComputeTasks
      */
-    public synchronized List<ComputeTask> getPendingTasks() {
-        List<ComputeTask> list = new ArrayList<>(pendingQueue);
-        Collections.sort(list);
-        return list;
+    public List<ComputeTask> getPendingTasks() {
+        schedulerLock.lock();
+        try {
+            List<ComputeTask> list = new ArrayList<>(pendingQueue);
+            Collections.sort(list);
+            return list;
+        } finally {
+            schedulerLock.unlock();
+        }
     }
 
     /**
@@ -424,10 +494,9 @@ public class TaskScheduler {
      *
      * @return pending task count
      */
-    public synchronized int getPendingTaskCount() {
+    public int getPendingTaskCount() {
         return pendingQueue.size();
     }
-
     public EnvironmentalDataProvider getProvider() {
         return this.provider;
     }
@@ -438,5 +507,13 @@ public class TaskScheduler {
 
     public void setLastKnownCarbonIntensity(Double lastKnownCarbonIntensity) {
         this.lastKnownCarbonIntensity = lastKnownCarbonIntensity;
+    }
+
+    public ConsoleView getConsoleView() {
+        return consoleView;
+    }
+
+    public void setConsoleView(ConsoleView consoleView) {
+        this.consoleView = consoleView;
     }
 }
