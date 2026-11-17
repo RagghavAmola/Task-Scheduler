@@ -4,6 +4,7 @@ import com.greencloud.env.CarbonIntensitySnapshot;
 import com.greencloud.env.EnvironmentalDataProvider;
 import com.greencloud.exceptions.EnvironmentalDataException;
 import com.greencloud.exceptions.SchedulingException;
+import com.greencloud.metrics.MetricsCollector;
 import com.greencloud.model.ComputeTask;
 import com.greencloud.model.TaskPriority;
 import com.greencloud.model.TaskStatus;
@@ -52,11 +53,17 @@ public class TaskScheduler {
     private final ReentrantLock schedulerLock = new ReentrantLock();
     private volatile Double lastKnownCarbonIntensity;
     private volatile ConsoleView consoleView;
+    private volatile MetricsCollector metricsCollector;
 
     public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool, ConsoleView consoleView) {
+        this(provider, objectPool, consoleView, null);
+    }
+
+    public TaskScheduler(EnvironmentalDataProvider provider, TaskObjectPool<ComputeTask> objectPool, ConsoleView consoleView, MetricsCollector metricsCollector) {
         this.provider = provider;
         this.objectPool = objectPool;
         this.consoleView = consoleView;
+        this.metricsCollector = metricsCollector;
         this.pendingQueue = new PriorityQueue<>();
         this.preemptedTaskStack = new ArrayDeque<>();
         this.executionEvents = new CopyOnWriteArrayList<>();
@@ -123,6 +130,10 @@ public class TaskScheduler {
             LOGGER.info(() -> String.format("[SUBMIT] Task [%s] added (Priority: %s, Threshold: %.1f gCO2/kWh). Total pending: %d",
                     task.getTaskId(), task.getPriority(), task.getCarbonThresholdGramsPerKwh(), pendingQueue.size()));
 
+            if (metricsCollector != null) {
+                metricsCollector.taskSubmitted(task.getTaskId(), task.getPriority(), task.getSubmittedAt());
+            }
+
             if (consoleView != null) {
                 consoleView.printTaskSubmitted(task, pendingQueue.size());
             }
@@ -184,6 +195,9 @@ public class TaskScheduler {
                 executionEvents.add("PREEMPTED:" + runningTask.getTaskId());
                 LOGGER.info(() -> String.format("[PREEMPTION] Task [%s] preempted at %.1f%% completion (remaining work: %d ms)",
                         runningTask.getTaskId(), runningTask.getCompletionPercentage(), runningTask.getRemainingDurationMillis()));
+                if (metricsCollector != null) {
+                    metricsCollector.taskPreempted(runningTask.getTaskId(), criticalTask.getTaskId());
+                }
                 if (consoleView != null) {
                     consoleView.printTaskPreempted(runningTask, criticalTask);
                 }
@@ -211,11 +225,17 @@ public class TaskScheduler {
             criticalTask.setCompletedTime(System.currentTimeMillis());
             if (criticalTask.getStatus() == TaskStatus.FAILED) {
                 executionEvents.add("CRITICAL_FAILED:" + criticalTask.getTaskId());
+                if (metricsCollector != null) {
+                    metricsCollector.taskFailed(criticalTask.getTaskId(), "Critical task failed execution");
+                }
                 if (consoleView != null) {
                     consoleView.printTaskFailed(criticalTask, "Critical task failed execution");
                 }
             } else {
                 executionEvents.add("CRITICAL_EXECUTED:" + criticalTask.getTaskId());
+                if (metricsCollector != null) {
+                    metricsCollector.taskExecuted(criticalTask.getTaskId(), TaskPriority.CRITICAL, false, criticalTask.getStartTime());
+                }
                 if (consoleView != null) {
                     consoleView.printTaskCompleted(criticalTask);
                 }
@@ -239,6 +259,9 @@ public class TaskScheduler {
             LOGGER.info(() -> String.format("[RESUME] Task [%s] resumed from saved context (remaining work: %d ms)",
                     resumedTask.getTaskId(), resumedTask.getRemainingDurationMillis()));
 
+            if (metricsCollector != null) {
+                metricsCollector.taskResumed(resumedTask.getTaskId());
+            }
             if (consoleView != null) {
                 consoleView.printTaskResumed(resumedTask);
             }
@@ -367,6 +390,9 @@ public class TaskScheduler {
                     candidate.setStatus(TaskStatus.FAILED);
                     executionEvents.add("FAILED:" + candidate.getTaskId());
                     LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished with status: FAILED (scheduler loop remains healthy)", candidate.getTaskId()));
+                    if (metricsCollector != null) {
+                        metricsCollector.taskFailed(candidate.getTaskId(), "Task threw an exception or failed execution");
+                    }
                     if (consoleView != null) {
                         consoleView.printTaskFailed(candidate, "Task threw an exception during execution");
                     }
@@ -374,6 +400,15 @@ public class TaskScheduler {
                     candidate.setStatus(TaskStatus.COMPLETED);
                     executionEvents.add("COMPLETED:" + candidate.getTaskId());
                     LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished execution with status: COMPLETED", candidate.getTaskId()));
+                    if (metricsCollector != null) {
+                        boolean wasUnderThreshold = candidate.getCarbonThresholdGramsPerKwh() >= currentCarbonIntensity;
+                        metricsCollector.taskExecuted(
+                            candidate.getTaskId(),
+                            candidate.getPriority(),
+                            wasUnderThreshold,
+                            candidate.getStartTime()
+                        );
+                    }
                     if (consoleView != null) {
                         consoleView.printTaskCompleted(candidate);
                     }

@@ -3,7 +3,6 @@ package com.greencloud.simulation;
 import com.greencloud.env.CarbonIntensitySnapshot;
 import com.greencloud.model.BackupTask;
 import com.greencloud.model.TaskPriority;
-import com.greencloud.model.TaskStatus;
 import com.greencloud.view.ConsoleView;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
