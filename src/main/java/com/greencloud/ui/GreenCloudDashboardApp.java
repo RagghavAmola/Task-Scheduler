@@ -698,7 +698,7 @@ public class GreenCloudDashboardApp extends Application {
         Label eventFilterLabel = new Label("Event:");
         eventFilterLabel.getStyleClass().add("label-field");
         eventTypeFilterCombo = new ComboBox<>(FXCollections.observableArrayList(
-                "ALL", "SUBMITTED", "EXECUTED", "DEFERRED", "PREEMPTED", "RESUMED", "COMPLETED", "FAILED"
+                "ALL", "SUBMITTED", "EXECUTED", "DEFERRED", "PREEMPTED", "RESUMED", "FAILED"
         ));
         eventTypeFilterCombo.setValue("ALL");
         eventTypeFilterCombo.valueProperty().addListener((obs, o, n) -> applyEventFilters());
@@ -830,7 +830,7 @@ public class GreenCloudDashboardApp extends Application {
                 } else {
                     setText(item);
                     switch (item) {
-                        case "EXECUTED", "COMPLETED" -> setStyle("-fx-text-fill: #10b981; -fx-font-weight: bold;");
+                        case "EXECUTED" -> setStyle("-fx-text-fill: #10b981; -fx-font-weight: bold;");
                         case "PREEMPTED" -> setStyle("-fx-text-fill: #ef4444; -fx-font-weight: bold;");
                         case "DEFERRED" -> setStyle("-fx-text-fill: #f59e0b; -fx-font-weight: bold;");
                         case "RESUMED" -> setStyle("-fx-text-fill: #38bdf8; -fx-font-weight: bold;");
