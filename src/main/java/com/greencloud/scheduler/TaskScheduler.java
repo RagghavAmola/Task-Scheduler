@@ -222,7 +222,8 @@ public class TaskScheduler {
             criticalTask.setStatus(TaskStatus.FAILED);
             LOGGER.log(Level.SEVERE, String.format("[CRITICAL] Task [%s] failed with exception: %s", criticalTask.getTaskId(), t.getMessage()), t);
         } finally {
-            criticalTask.setCompletedTime(System.currentTimeMillis());
+            long critCompletedAt = System.currentTimeMillis();
+            criticalTask.setCompletedTime(critCompletedAt);
             if (criticalTask.getStatus() == TaskStatus.FAILED) {
                 executionEvents.add("CRITICAL_FAILED:" + criticalTask.getTaskId());
                 if (metricsCollector != null) {
@@ -234,7 +235,7 @@ public class TaskScheduler {
             } else {
                 executionEvents.add("CRITICAL_EXECUTED:" + criticalTask.getTaskId());
                 if (metricsCollector != null) {
-                    metricsCollector.taskExecuted(criticalTask.getTaskId(), TaskPriority.CRITICAL, false, criticalTask.getStartTime());
+                    metricsCollector.taskExecuted(criticalTask.getTaskId(), TaskPriority.CRITICAL, false, critCompletedAt);
                 }
                 if (consoleView != null) {
                     consoleView.printTaskCompleted(criticalTask);
@@ -273,7 +274,8 @@ public class TaskScheduler {
                 resumedTask.setStatus(TaskStatus.FAILED);
                 LOGGER.log(Level.SEVERE, String.format("[RESUME] Task [%s] failed with exception: %s", resumedTask.getTaskId(), t.getMessage()), t);
             } finally {
-                resumedTask.setCompletedTime(System.currentTimeMillis());
+                long resumedCompletedAt = System.currentTimeMillis();
+                resumedTask.setCompletedTime(resumedCompletedAt);
                 if (resumedTask.getStatus() == TaskStatus.FAILED) {
                     executionEvents.add("FAILED:" + resumedTask.getTaskId());
                     if (consoleView != null) {
@@ -281,6 +283,16 @@ public class TaskScheduler {
                     }
                 } else {
                     executionEvents.add("COMPLETED:" + resumedTask.getTaskId());
+                    if (metricsCollector != null) {
+                        boolean wasUnderThreshold = lastKnownCarbonIntensity != null
+                                && resumedTask.getCarbonThresholdGramsPerKwh() >= lastKnownCarbonIntensity;
+                        metricsCollector.taskExecuted(
+                                resumedTask.getTaskId(),
+                                resumedTask.getPriority(),
+                                wasUnderThreshold,
+                                resumedCompletedAt
+                        );
+                    }
                     if (consoleView != null) {
                         consoleView.printTaskCompleted(resumedTask);
                     }
@@ -340,6 +352,14 @@ public class TaskScheduler {
             if (!candidate.isEligibleToRun(currentCarbonIntensity)) {
                 LOGGER.info(() -> String.format("[DECISION] Task [%s] IS NOT ELIGIBLE to run (Threshold: %.1f gCO2/kWh < Current: %.1f gCO2/kWh). Retaining in queue for better conditions.",
                         candidate.getTaskId(), candidate.getCarbonThresholdGramsPerKwh(), currentCarbonIntensity));
+                if (metricsCollector != null) {
+                    metricsCollector.taskDeferred(
+                            candidate.getTaskId(),
+                            candidate.getPriority(),
+                            currentCarbonIntensity,
+                            candidate.getCarbonThresholdGramsPerKwh()
+                    );
+                }
                 if (consoleView != null) {
                     consoleView.printTaskDeferred(candidate, currentCarbonIntensity);
                 }
@@ -386,6 +406,7 @@ public class TaskScheduler {
                 Thread.interrupted(); // clear interrupt status
                 executeCritical(critTask);
             } else {
+                long completedAt = System.currentTimeMillis();
                 if (taskFailed || candidate.getStatus() == TaskStatus.FAILED) {
                     candidate.setStatus(TaskStatus.FAILED);
                     executionEvents.add("FAILED:" + candidate.getTaskId());
@@ -396,24 +417,24 @@ public class TaskScheduler {
                     if (consoleView != null) {
                         consoleView.printTaskFailed(candidate, "Task threw an exception during execution");
                     }
-                } else if (candidate.getStatus() == TaskStatus.RUNNING) {
+                } else if (candidate.getStatus() != TaskStatus.PREEMPTED) {
                     candidate.setStatus(TaskStatus.COMPLETED);
                     executionEvents.add("COMPLETED:" + candidate.getTaskId());
                     LOGGER.info(() -> String.format("[OUTCOME] Task [%s] finished execution with status: COMPLETED", candidate.getTaskId()));
                     if (metricsCollector != null) {
                         boolean wasUnderThreshold = candidate.getCarbonThresholdGramsPerKwh() >= currentCarbonIntensity;
                         metricsCollector.taskExecuted(
-                            candidate.getTaskId(),
-                            candidate.getPriority(),
-                            wasUnderThreshold,
-                            candidate.getStartTime()
+                                candidate.getTaskId(),
+                                candidate.getPriority(),
+                                wasUnderThreshold,
+                                completedAt
                         );
                     }
                     if (consoleView != null) {
                         consoleView.printTaskCompleted(candidate);
                     }
                 }
-                candidate.setCompletedTime(System.currentTimeMillis());
+                candidate.setCompletedTime(completedAt);
                 currentlyRunningTask = null;
                 currentExecutionThread = null;
 

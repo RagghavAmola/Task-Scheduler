@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.logging.Logger;
@@ -23,12 +25,30 @@ import java.util.logging.Logger;
  * computes summary statistics including carbon-aware execution rate, preemption success rate,
  * and average time-to-execution by priority level.
  * <p>
+ * Exports two persistent CSV files for the post-run dashboard:
+ * <ul>
+ *   <li>{@code results/events.csv}: Detailed event log (timestamp, eventType, taskId, priority, carbonIntensity, carbonThreshold)</li>
+ *   <li>{@code results/summary.csv}: Summary KPIs (carbon-aware rate, preemption rate, avg wait times, task counts)</li>
+ * </ul>
+ * <p>
  * Uses {@link AtomicInteger}, {@link LongAdder}, and {@link ConcurrentHashMap}
  * for lock-free, thread-safe concurrent operation.
  */
 public class MetricsCollector {
 
     private static final Logger LOGGER = Logger.getLogger(MetricsCollector.class.getName());
+
+    /**
+     * Immutable data record representing a single lifecycle event written to {@code events.csv}.
+     */
+    public record EventEntry(
+            long timestamp,
+            String eventType,
+            String taskId,
+            String priority,
+            double carbonIntensityAtEvent,
+            double carbonThreshold
+    ) {}
 
     // ── Submission counters ──
     private final AtomicInteger totalSubmitted = new AtomicInteger(0);
@@ -64,9 +84,37 @@ public class MetricsCollector {
     private final LongAdder criticalLatencySumMs = new LongAdder();
     private final AtomicInteger criticalLatencyCount = new AtomicInteger(0);
 
-    // ── Per-task submission timestamps (for latency computation at execution time) ──
+    // ── Per-task submission timestamps and metadata (for latency & event reporting) ──
     private final ConcurrentHashMap<String, Long> submissionTimestamps = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, TaskPriority> taskPriorities = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Double> taskThresholds = new ConcurrentHashMap<>();
+
+    // ── Sequential event history for events.csv ──
+    private final List<EventEntry> eventHistory = new CopyOnWriteArrayList<>();
+    private volatile double currentCarbonIntensity = 0.0;
+
+    /**
+     * Updates the current environmental grid carbon intensity observed by the collector.
+     *
+     * @param intensity current carbon intensity in gCO2/kWh
+     */
+    public void setCurrentCarbonIntensity(double intensity) {
+        this.currentCarbonIntensity = intensity;
+    }
+
+    public double getCurrentCarbonIntensity() {
+        return this.currentCarbonIntensity;
+    }
+
+    /**
+     * Registers a task's carbon threshold for accurate event logging.
+     *
+     * @param taskId          task identifier
+     * @param carbonThreshold carbon threshold in gCO2/kWh
+     */
+    public void registerTaskThreshold(String taskId, double carbonThreshold) {
+        taskThresholds.put(taskId, carbonThreshold);
+    }
 
     /**
      * Records a task submission event.
@@ -85,6 +133,17 @@ public class MetricsCollector {
             case HIGH -> highSubmitted.incrementAndGet();
             case BACKGROUND -> backgroundSubmitted.incrementAndGet();
         }
+
+        double threshold = taskThresholds.getOrDefault(taskId, 0.0);
+        recordEvent(submittedAt, "SUBMITTED", taskId, priority != null ? priority.name() : "UNKNOWN", currentCarbonIntensity, threshold);
+    }
+
+    /**
+     * Records a task submission event with explicit carbon threshold.
+     */
+    public void taskSubmitted(String taskId, TaskPriority priority, long submittedAt, double carbonThreshold) {
+        taskThresholds.put(taskId, carbonThreshold);
+        taskSubmitted(taskId, priority, submittedAt);
     }
 
     /**
@@ -132,6 +191,9 @@ public class MetricsCollector {
                 }
             }
         }
+
+        double threshold = taskThresholds.getOrDefault(taskId, 0.0);
+        recordEvent(executionStartTime, "EXECUTED", taskId, priority != null ? priority.name() : "UNKNOWN", currentCarbonIntensity, threshold);
     }
 
     /**
@@ -142,6 +204,9 @@ public class MetricsCollector {
      */
     public void taskPreempted(String preemptedTaskId, String criticalTaskId) {
         criticalTasksThatPreempted.incrementAndGet();
+        TaskPriority prio = taskPriorities.getOrDefault(preemptedTaskId, TaskPriority.BACKGROUND);
+        double threshold = taskThresholds.getOrDefault(preemptedTaskId, 0.0);
+        recordEvent(System.currentTimeMillis(), "PREEMPTED", preemptedTaskId, prio.name(), currentCarbonIntensity, threshold);
     }
 
     /**
@@ -151,6 +216,26 @@ public class MetricsCollector {
      */
     public void taskResumed(String taskId) {
         tasksResumed.incrementAndGet();
+        TaskPriority prio = taskPriorities.getOrDefault(taskId, TaskPriority.BACKGROUND);
+        double threshold = taskThresholds.getOrDefault(taskId, 0.0);
+        recordEvent(System.currentTimeMillis(), "RESUMED", taskId, prio.name(), currentCarbonIntensity, threshold);
+    }
+
+    /**
+     * Records a task completion event.
+     */
+    public void taskCompleted(String taskId) {
+        TaskPriority prio = taskPriorities.getOrDefault(taskId, TaskPriority.BACKGROUND);
+        double threshold = taskThresholds.getOrDefault(taskId, 0.0);
+        recordEvent(System.currentTimeMillis(), "COMPLETED", taskId, prio.name(), currentCarbonIntensity, threshold);
+    }
+
+    /**
+     * Records a task deferral event (candidate task could not execute due to high carbon intensity).
+     */
+    public void taskDeferred(String taskId, TaskPriority priority, double currentIntensity, double threshold) {
+        taskThresholds.put(taskId, threshold);
+        recordEvent(System.currentTimeMillis(), "DEFERRED", taskId, priority != null ? priority.name() : "BACKGROUND", currentIntensity, threshold);
     }
 
     /**
@@ -161,6 +246,9 @@ public class MetricsCollector {
      */
     public void taskFailed(String taskId, String reason) {
         tasksFailed.incrementAndGet();
+        TaskPriority prio = taskPriorities.getOrDefault(taskId, TaskPriority.BACKGROUND);
+        double threshold = taskThresholds.getOrDefault(taskId, 0.0);
+        recordEvent(System.currentTimeMillis(), "FAILED", taskId, prio.name(), currentCarbonIntensity, threshold);
     }
 
     /**
@@ -179,6 +267,17 @@ public class MetricsCollector {
      */
     public void apiFailureHandled(String reason) {
         apiFailuresHandled.incrementAndGet();
+    }
+
+    /**
+     * Directly appends an event entry to the event history.
+     */
+    public void recordEvent(long timestamp, String eventType, String taskId, String priority, double carbonIntensityAtEvent, double carbonThreshold) {
+        eventHistory.add(new EventEntry(timestamp, eventType, taskId, priority, carbonIntensityAtEvent, carbonThreshold));
+    }
+
+    public List<EventEntry> getEventHistory() {
+        return Collections.unmodifiableList(eventHistory);
     }
 
     // ── Computed Metrics ──
@@ -291,8 +390,63 @@ public class MetricsCollector {
     }
 
     /**
-     * Exports all metrics to a CSV file at the specified path.
-     * Creates parent directories if they do not exist.
+     * Exports both {@code results/events.csv} and {@code results/summary.csv} to the specified directory.
+     *
+     * @param resultsDir directory where results CSV files should be written
+     * @throws IOException if file creation or writing fails
+     */
+    public void exportResults(Path resultsDir) throws IOException {
+        Files.createDirectories(resultsDir);
+
+        // a) results/events.csv -> timestamp,eventType,taskId,priority,carbonIntensityAtEvent,carbonThreshold
+        Path eventsPath = resultsDir.resolve("events.csv");
+        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(eventsPath))) {
+            writer.println("timestamp,eventType,taskId,priority,carbonIntensityAtEvent,carbonThreshold");
+            for (EventEntry entry : eventHistory) {
+                writer.printf("%d,%s,%s,%s,%.2f,%.2f%n",
+                        entry.timestamp(),
+                        entry.eventType(),
+                        entry.taskId(),
+                        entry.priority(),
+                        entry.carbonIntensityAtEvent(),
+                        entry.carbonThreshold());
+            }
+        }
+
+        // b) results/summary.csv -> metric,value
+        Path summaryPath = resultsDir.resolve("summary.csv");
+        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(summaryPath))) {
+            writer.println("metric,value");
+            writer.printf("carbon-aware execution rate,%.2f%%%n", getCarbonAwareExecutionRate());
+            writer.printf("preemption success rate,%.2f%%%n", getPreemptionSuccessRate());
+            writer.printf("avg background wait time,%.2f ms%n", getAverageBackgroundLatencyMs());
+            writer.printf("avg critical time-to-execution,%.2f ms%n", getAverageCriticalLatencyMs());
+            writer.printf("avg high time-to-execution,%.2f ms%n", getAverageHighLatencyMs());
+            writer.println("total submitted," + getTotalSubmitted());
+            writer.println("total completed," + (getTotalExecuted() - getTasksFailed()));
+            writer.println("total preempted," + getCriticalTasksThatPreempted());
+            writer.println("total failed," + getTasksFailed());
+        }
+
+        LOGGER.info(() -> String.format("[METRICS] Exported results to directory: %s", resultsDir.toAbsolutePath()));
+    }
+
+    /**
+     * Convenience method to export results to string directory path.
+     */
+    public void exportResults(String dirPath) throws IOException {
+        exportResults(Paths.get(dirPath));
+    }
+
+    /**
+     * Default export writes to {@code results/} directory.
+     */
+    public void exportResults() throws IOException {
+        exportResults("results");
+    }
+
+    /**
+     * Exports all metrics to a single CSV file at the specified path (backward compatibility).
      *
      * @param filePath path where the CSV report should be written
      * @throws IOException if file creation or writing fails

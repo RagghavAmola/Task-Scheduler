@@ -1,0 +1,278 @@
+/* Green Cloud Dashboard Theme */
+
+.root {
+    -fx-font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+    -fx-base: #0f172a;
+    -fx-background-color: #0b1120;
+    -fx-text-fill: #e2e8f0;
+}
+
+/* TabPane Styling */
+.tab-pane {
+    -fx-tab-min-width: 160px;
+    -fx-tab-max-width: 240px;
+}
+
+.tab-pane .tab-header-area {
+    -fx-background-color: #0f172a;
+    -fx-padding: 8px 16px 0 16px;
+}
+
+.tab-pane .tab {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 6px 6px 0 0;
+    -fx-padding: 8px 16px;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: #3b82f6;
+}
+
+.tab-pane .tab .tab-label {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.tab-pane .tab:selected .tab-label {
+    -fx-text-fill: #ffffff;
+}
+
+/* Card Styling */
+.card {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 8px;
+    -fx-padding: 16px;
+    -fx-border-color: #334155;
+    -fx-border-radius: 8px;
+    -fx-border-width: 1px;
+}
+
+.section-header {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #38bdf8;
+    -fx-padding: 0 0 8px 0;
+}
+
+.sub-header {
+    -fx-font-size: 13px;
+    -fx-text-fill: #94a3b8;
+}
+
+/* Metric Cards */
+.metric-card {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 8px;
+    -fx-padding: 16px;
+    -fx-border-color: #334155;
+    -fx-border-radius: 8px;
+    -fx-border-width: 1px;
+    -fx-alignment: center-left;
+}
+
+.metric-title {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #94a3b8;
+    -fx-text-transform: uppercase;
+}
+
+.metric-value {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f8fafc;
+}
+
+.metric-value-green {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #10b981;
+}
+
+.metric-value-red {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #ef4444;
+}
+
+.metric-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: #64748b;
+}
+
+/* Buttons */
+.button {
+    -fx-background-color: #334155;
+    -fx-text-fill: #f8fafc;
+    -fx-font-weight: bold;
+    -fx-padding: 8px 16px;
+    -fx-background-radius: 6px;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #475569;
+}
+
+.button-primary {
+    -fx-background-color: #059669;
+    -fx-text-fill: #ffffff;
+}
+
+.button-primary:hover {
+    -fx-background-color: #10b981;
+}
+
+.button-accent {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: #ffffff;
+}
+
+.button-accent:hover {
+    -fx-background-color: #3b82f6;
+}
+
+.button-danger {
+    -fx-background-color: #b91c1c;
+    -fx-text-fill: #ffffff;
+}
+
+.button-danger:hover {
+    -fx-background-color: #dc2626;
+}
+
+/* Form Controls */
+.text-field, .spinner, .combo-box {
+    -fx-background-color: #0f172a;
+    -fx-text-fill: #f8fafc;
+    -fx-prompt-text-fill: #64748b;
+    -fx-border-color: #334155;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-padding: 6px 10px;
+}
+
+.text-field:focused, .spinner:focused, .combo-box:focused {
+    -fx-border-color: #38bdf8;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: #f8fafc;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: #1e293b;
+    -fx-border-color: #334155;
+}
+
+.combo-box-popup .list-view .list-cell:filled:hover {
+    -fx-background-color: #334155;
+}
+
+.label-field {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #cbd5e1;
+}
+
+/* Progress Section */
+.progress-bar > .bar {
+    -fx-background-color: linear-gradient(to right, #059669, #10b981, #38bdf8);
+    -fx-background-radius: 6px;
+}
+
+.progress-bar > .track {
+    -fx-background-color: #1e293b;
+    -fx-background-radius: 6px;
+}
+
+.progress-timer-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #38bdf8;
+}
+
+.progress-counter-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #10b981;
+}
+
+/* Tables */
+.table-view {
+    -fx-background-color: #0f172a;
+    -fx-border-color: #334155;
+    -fx-border-radius: 6px;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #1e293b;
+}
+
+.table-view .column-header {
+    -fx-background-color: transparent;
+    -fx-font-weight: bold;
+    -fx-text-fill: #94a3b8;
+    -fx-size: 32px;
+}
+
+.table-view .table-row-cell {
+    -fx-background-color: #0f172a;
+    -fx-text-fill: #e2e8f0;
+    -fx-border-color: #1e293b;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.table-view .table-row-cell:odd {
+    -fx-background-color: #131d33;
+}
+
+.table-view .table-row-cell:selected {
+    -fx-background-color: #1e3a8a;
+}
+
+/* Priority Badges */
+.badge-critical {
+    -fx-text-fill: #ef4444;
+    -fx-font-weight: bold;
+}
+
+.badge-high {
+    -fx-text-fill: #f59e0b;
+    -fx-font-weight: bold;
+}
+
+.badge-background {
+    -fx-text-fill: #10b981;
+    -fx-font-weight: bold;
+}
+
+/* Charts */
+.chart-plot-background {
+    -fx-background-color: #0f172a;
+}
+
+.chart-vertical-grid-lines, .chart-horizontal-grid-lines {
+    -fx-stroke: #1e293b;
+}
+
+.axis {
+    -fx-tick-label-fill: #94a3b8;
+    -fx-text-fill: #94a3b8;
+}
+
+.chart-title {
+    -fx-text-fill: #38bdf8;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.chart-legend {
+    -fx-background-color: #1e293b;
+    -fx-text-fill: #94a3b8;
+}
+
+.chart-legend-item {
+    -fx-text-fill: #94a3b8;
+}
